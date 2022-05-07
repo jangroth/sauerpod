@@ -9,8 +9,10 @@
       "cdk*.json",
       "requirements*.txt",
       "**/__init__.py",
-      "python/__pycache__",
-      "tests"
+      "sauerpod/__pycache__",
+      "tests",
+      ".media",
+      "scripts"
     ]
   },
   "context": {

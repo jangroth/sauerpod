@@ -1,0 +1,15 @@
+@baseUrlBouncer = https://asagp423vwnjfo5soquzrnsbuu0abnqt.lambda-url.ap-southeast-2.on.aws
+@baseUrlTelegram = https://api.telegram.org
+
+# hello world message to bouncer
+POST {{baseUrlBouncer}}/ HTTP/1.1
+content-type: application/json
+
+{
+    "message": "Hello back from your bouncer",
+}
+
+###
+
+# test message to bot
+{{baseUrlTelegram}}/bot{{$processEnv TELEGRAM_API_TOKEN}}/sendMessage?chat_id={{$processEnv TELEGRAM_CHAT_ID}}&parse_mode=HTML&text=test

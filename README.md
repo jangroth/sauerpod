@@ -1,7 +1,11 @@
-
 # SauerPod (WIP)
-![SauerPod](.media/logo.png)
 ![SauerPod](.media/sauerpod.drawio.png)
+
+A grump bot that downloads videos into a personalized podcast.
+
+## Resources
+* https://core.telegram.org/bots/api
+* https://xabaras.medium.com/setting-your-telegram-bot-webhook-the-easy-way-c7577b2d6f72
 
 # Welcome to your CDK Python project!
 
