@@ -8,7 +8,6 @@
       "README.md",
       "cdk*.json",
       "requirements*.txt",
-      "source.bat",
       "**/__init__.py",
       "python/__pycache__",
       "tests"
@@ -17,6 +16,7 @@
   "context": {
     "@aws-cdk/aws-apigateway:usagePlanKeyOrderInsensitiveId": true,
     "@aws-cdk/core:stackRelativeExports": true,
+    "@aws-cdk/core:newStyleStackSynthesis": false,
     "@aws-cdk/aws-rds:lowercaseDbIdentifier": true,
     "@aws-cdk/aws-lambda:recognizeVersionProps": true,
     "@aws-cdk/aws-cloudfront:defaultSecurityPolicyTLSv1.2_2021": true,

@@ -1,0 +1,6 @@
+POST https://asagp423vwnjfo5soquzrnsbuu0abnqt.lambda-url.ap-southeast-2.on.aws/ HTTP/1.1
+content-type: application/json
+
+{
+    "foo": "bar",
+}

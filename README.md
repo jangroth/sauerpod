@@ -1,6 +1,6 @@
 
 # SauerPod (WIP)
-
+![SauerPod](.media/logo.png)
 ![SauerPod](.media/sauerpod.drawio.png)
 
 # Welcome to your CDK Python project!
