@@ -1,3 +1,5 @@
+boto3
 black
 flake8
 pytest==6.2.5
+requests
