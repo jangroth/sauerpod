@@ -1,5 +1,3 @@
-import logging
-
 from aws_cdk import BundlingOptions, CfnOutput, Stack
 from aws_cdk import aws_iam as _iam
 from aws_cdk import aws_lambda as _lambda
@@ -16,7 +14,7 @@ class SauerpodStack(Stack):
             "BouncerLambda",
             runtime=_lambda.Runtime.PYTHON_3_9,
             code=_lambda.Code.from_asset(
-                "lambda",
+                "src",
                 bundling=BundlingOptions(
                     image=_lambda.Runtime.PYTHON_3_9.bundling_image,
                     command=[

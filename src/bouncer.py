@@ -55,22 +55,54 @@ def notify_cloudwatch(function):
 
 
 class Bouncer:
-    def __init__(self, telegram_message) -> None:
-        self.telegram_message = telegram_message
+    def __init__(self) -> None:
+        self.telegram = TelegramNotifier()
+        self.logger = logging.getLogger(self.__class__.__name__)
+        self.logger.setLevel(os.environ.get("LOGGING", logging.DEBUG))
 
-    def acknowledge(self):
-        from_first_name = self.telegram_message["message"]["from"]["first_name"]
+    def _extract_incoming_message(self, event):
+        return json.loads(event["body"])
+
+    def _acknowledge(self, incoming_message):
+        first_name = self.telegram_message["message"]["from"]["first_name"]
         text = self.telegram_message["message"]["text"]
-        TelegramNotifier().send(f"Hello {from_first_name}, you said '{text}'.")
+        TelegramNotifier().send(f"Hello {first_name}, you said '{text}'.")
+
+    def _start_state_machine(self, message):
+        pass
+        # response = self.sfn_client.start_execution(
+        #     stateMachineArn=os.environ.get('STATE_MACHINE', None),
+        #     input=json.dumps(message)
+        # )
+        # logging.info(f"Starting state machine: '{response['executionArn']}'")
+
+    def _get_return_message(self, status_code, message):
+        return {
+            "statusCode": status_code,
+            "body": json.dumps({"message": message}),
+        }
+
+    def handle_event(self, event):
+        try:
+            event_body = self._extract_incoming_message(event)
+            self._acknowledge(event_body)
+            self._start_state_machine(event_body)
+            result = self._get_return_message(
+                status_code=200, message="Event received, state machine started."
+            )
+            self.telegram.send("Event received, starting processing.")
+        except Exception as e:
+            logging.exception(e)
+            result = self._get_return_message(
+                status_code=500,
+                message=f"Error processing incoming event {event}\n\n{e}",
+            )
+        return result
 
 
 @notify_cloudwatch
 def handler(event, context):
-    Bouncer(json.loads(event["body"])).acknowledge()
-    return {
-        "statusCode": 200,
-        "headers": {"Content-Type": "text/plain"},
-        "body": "message received",
-    }
+    return Bouncer().handle_event(event)
+
 
 # EOF

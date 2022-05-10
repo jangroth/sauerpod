@@ -5,14 +5,15 @@
       "**"
     ],
     "exclude": [
-      "README.md",
       "cdk*.json",
       "requirements*.txt",
       "**/__init__.py",
       "sauerpod/__pycache__",
       "tests",
       ".media",
-      "scripts"
+      "scripts",
+      "README.md",
+      "Makefile"
     ]
   },
   "context": {
@@ -32,3 +33,4 @@
     ]
   }
 }
+1
