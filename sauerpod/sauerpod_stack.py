@@ -1,3 +1,5 @@
+import logging
+
 from aws_cdk import BundlingOptions, CfnOutput, Stack
 from aws_cdk import aws_iam as _iam
 from aws_cdk import aws_lambda as _lambda
@@ -25,6 +27,7 @@ class SauerpodStack(Stack):
                 ),
             ),
             handler="bouncer.handler",
+            environment={"LOGGING": "DEBUG"},
         )
         bouncer_fn_url = bouncer_lambda.add_function_url(
             auth_type=_lambda.FunctionUrlAuthType.NONE

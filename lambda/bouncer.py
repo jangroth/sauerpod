@@ -42,6 +42,18 @@ class TelegramNotifier:
         )
 
 
+def notify_cloudwatch(function):
+    def wrapper(*args, **kwargs):
+        incoming_event = args[0]  # ...event
+        function_name = args[1].function_name  # ...context
+        logger.info(f"'{function_name}' - entry.\nIncoming event: '{incoming_event}'")
+        result = function(*args, **kwargs)
+        logger.info(f"'{function_name}' - exit.\n\nResult: '{result}'")
+        return result
+
+    return wrapper
+
+
 class Bouncer:
     def __init__(self, telegram_message) -> None:
         self.telegram_message = telegram_message
@@ -52,6 +64,7 @@ class Bouncer:
         TelegramNotifier().send(f"Hello {from_first_name}, you said '{text}'.")
 
 
+@notify_cloudwatch
 def handler(event, context):
     Bouncer(json.loads(event["body"])).acknowledge()
     return {
@@ -59,3 +72,5 @@ def handler(event, context):
         "headers": {"Content-Type": "text/plain"},
         "body": "message received",
     }
+
+# EOF
