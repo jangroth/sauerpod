@@ -1,0 +1,36 @@
+{
+    "version": "2.0",
+    "routeKey": "$default",
+    "rawPath": "/",
+    "rawQueryString": "",
+    "headers": {
+        "content-length": "307",
+        "x-amzn-trace-id": "Root=1-627a3fd6-5db81af1337eed813ad22226",
+        "x-forwarded-proto": "https",
+        "host": "djdqozgpp22e2znl2eqlcgbzyq0yxbqi.lambda-url.ap-southeast-2.on.aws",
+        "x-forwarded-port": "443",
+        "content-type": "application/json",
+        "x-forwarded-for": "91.108.6.94",
+        "accept-encoding": "gzip, deflate"
+    },
+    "requestContext": {
+        "accountId": "anonymous",
+        "apiId": "djdqozgpp22e2znl2eqlcgbzyq0yxbqi",
+        "domainName": "djdqozgpp22e2znl2eqlcgbzyq0yxbqi.lambda-url.ap-southeast-2.on.aws",
+        "domainPrefix": "djdqozgpp22e2znl2eqlcgbzyq0yxbqi",
+        "http": {
+            "method": "POST",
+            "path": "/",
+            "protocol": "HTTP/1.1",
+            "sourceIp": "91.108.6.94",
+            "userAgent": null
+        },
+        "requestId": "822a0076-68b1-4043-af72-0f38df47d327",
+        "routeKey": "$default",
+        "stage": "$default",
+        "time": "10/May/2022:10:35:02 +0000",
+        "timeEpoch": 1652178902114
+    },
+    "body": "{\"update_id\":58754382,\n\"message\":{\"message_id\":14,\"from\":{\"id\":173229021,\"is_bot\":false,\"first_name\":\"Jan\",\"last_name\":\"Groth\",\"username\":\"JanGroth\",\"language_code\":\"en\"},\"chat\":{\"id\":173229021,\"first_name\":\"Jan\",\"last_name\":\"Groth\",\"username\":\"JanGroth\",\"type\":\"private\"},\"date\":1652178739,\"text\":\"yoman\"}}",
+    "isBase64Encoded": false
+}

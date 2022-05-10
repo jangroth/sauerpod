@@ -1,12 +1,12 @@
-@baseUrlBouncer = https://asagp423vwnjfo5soquzrnsbuu0abnqt.lambda-url.ap-southeast-2.on.aws
+@baseUrlBouncer = https://hjp2njsps2foscbhedd3zd5w640jfnju.lambda-url.ap-southeast-2.on.aws
 @baseUrlTelegram = https://api.telegram.org
 
 # hello world message to bouncer
-POST {{baseUrlBouncer}}/ HTTP/1.1
+POST {{baseUrlBouncer}} HTTP/1.1
 content-type: application/json
 
 {
-    "message": "Hello back from your bouncer",
+    "message": "Hello back from your bouncer"
 }
 
 ###

@@ -16,9 +16,9 @@ class TelegramNotifier:
     def __init__(self):
         ssm_client = boto3.client("ssm")
         self.api_token = ssm_client.get_parameter(
-            Name="/pycast/telegram/api-token", WithDecryption=True
+            Name="/sauerpod/telegram/api-token", WithDecryption=True
         )["Parameter"]["Value"]
-        self.chat_id = ssm_client.get_parameter(Name="/pycast/telegram/chat-id")[
+        self.chat_id = ssm_client.get_parameter(Name="/sauerpod/telegram/chat-id")[
             "Parameter"
         ]["Value"]
 
@@ -42,16 +42,20 @@ class TelegramNotifier:
         )
 
 
+class Bouncer:
+    def __init__(self, telegram_message) -> None:
+        self.telegram_message = telegram_message
+
+    def acknowledge(self):
+        from_first_name = self.telegram_message["message"]["from"]["first_name"]
+        text = self.telegram_message["message"]["text"]
+        TelegramNotifier().send(f"Hello {from_first_name}, you said '{text}'.")
+
+
 def handler(event, context):
-    logger.info(f"Incoming request: {json.dumps(event)}")
-    request_method = event["requestContext"]["http"]["method"]
-    request_path = event["requestContext"]["http"]["path"]
-    request_body = event["body"]
-
-    TelegramNotifier().send(request_body.get("message", "hey there!"))
-
+    Bouncer(json.loads(event["body"])).acknowledge()
     return {
         "statusCode": 200,
         "headers": {"Content-Type": "text/plain"},
-        "body": f"-> '{request_method}' to '{request_path}'\n{request_body}",
+        "body": "message received",
     }

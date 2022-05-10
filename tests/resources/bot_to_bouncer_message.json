@@ -1,0 +1,23 @@
+{
+    "update_id": 58754382,
+    "message": {
+        "message_id": 14,
+        "from": {
+            "id": 173229021,
+            "is_bot": False,
+            "first_name": "Jan",
+            "last_name": "Groth",
+            "username": "JanGroth",
+            "language_code": "en"
+        },
+        "chat": {
+            "id": 173229021,
+            "first_name": "Jan",
+            "last_name": "Groth",
+            "username": "JanGroth",
+            "type": "private"
+        },
+        "date": 1652178739,
+        "text": "yoman"
+    }
+}
