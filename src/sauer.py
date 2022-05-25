@@ -6,7 +6,7 @@ import boto3
 import requests
 
 logging.basicConfig(format="%(asctime)s %(name)s %(levelname)s %(message)s")
-logger = logging.getLogger("RevokeDefaultSgApplication")
+logger = logging.getLogger("SauerPod")
 logger.setLevel(os.environ.get("LOGGING", logging.DEBUG))
 
 
@@ -56,7 +56,6 @@ def notify_cloudwatch(function):
 
 class Bouncer:
     def __init__(self) -> None:
-        self.telegram = TelegramNotifier()
         self.logger = logging.getLogger(self.__class__.__name__)
         self.logger.setLevel(os.environ.get("LOGGING", logging.DEBUG))
 
@@ -64,8 +63,8 @@ class Bouncer:
         return json.loads(event["body"])
 
     def _acknowledge(self, incoming_message):
-        first_name = self.telegram_message["message"]["from"]["first_name"]
-        text = self.telegram_message["message"]["text"]
+        first_name = incoming_message["message"]["from"]["first_name"]
+        text = incoming_message["message"]["text"]
         TelegramNotifier().send(f"Hello {first_name}, you said '{text}'.")
 
     def _start_state_machine(self, message):
@@ -101,7 +100,7 @@ class Bouncer:
 
 
 @notify_cloudwatch
-def handler(event, context):
+def bouncer_handler(event, context):
     return Bouncer().handle_event(event)
 
 

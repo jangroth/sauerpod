@@ -2,7 +2,7 @@ import json
 from unittest.mock import MagicMock
 
 import pytest
-from bouncer import Bouncer
+from app import Bouncer
 
 BASE_EVENT = """
 {
@@ -22,11 +22,37 @@ BASE_EVENT = """
 }
 """
 
+BASE_MESSAGE = """
+{
+    "update_id": 58754382,
+    "message": {
+        "message_id": 14,
+        "from": {
+            "id": 123456789,
+            "is_bot": False,
+            "first_name": "first_name",
+            "last_name": "last_name",
+            "username": "username",
+            "language_code": "en"
+        },
+        "chat": {
+            "id": 123456789,
+            "first_name": "first_name",
+            "last_name": "last_name",
+            "username": "username",
+            "type": "private"
+        },
+        "date": 1652178739,
+        "text": "yoman"
+    }
+}
+"""
+
 
 @pytest.fixture
 def good_event():
-    event = json.loads(BASE_EVENT)
-    event["body"] = '{"url":"https://www.ccc.de"}'
+    event = json.loads(BASE_EVENT, BASE_MESSAGE)
+    event["body"] = json.dumps(BASE_MESSAGE)
     return event
 
 
@@ -38,17 +64,26 @@ def bad_event():
 
 
 @pytest.fixture()
-def bnc():
+def bouncer():
     the_object = Bouncer.__new__(Bouncer)
     the_object.logger = MagicMock()
     the_object.telegram = MagicMock()
     return the_object
 
 
-def test_should_process_good_event_and_start_state_machine(good_event, bnc):
-    bnc._start_state_machine = MagicMock()
+def test_should_process_good_event_and_start_state_machine(good_event, bouncer):
+    bouncer._start_state_machine = MagicMock()
 
-    result = bnc.handle_event(good_event)
+    result = bouncer.handle_event(good_event)
 
-    bnc._start_state_machine.assert_called_once_with({"url": "https://www.ccc.de"})
+    bouncer._start_state_machine.assert_called_once_with({"url": "https://www.ccc.de"})
     assert result["statusCode"] == 200
+
+
+def test_return_500_on_bad_event(bad_event, obs):
+    obs._start_state_machine = MagicMock()
+
+    result = obs.handle_event(good_event)
+
+    obs._start_state_machine.assert_not_called()
+    assert result["statusCode"] == 500
