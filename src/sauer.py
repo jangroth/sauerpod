@@ -54,14 +54,27 @@ def notify_cloudwatch(function):
     return wrapper
 
 
+class UnknownChatIdException(Exception):
+    pass
+
+
 class Bouncer:
     def __init__(self) -> None:
+        ssm_client = boto3.client("ssm")
+        self.allowed_chat_id = ssm_client.get_parameter(
+            Name="/sauerpod/telegram/chat-id"
+        )["Parameter"]["Value"]
+        self.telegram = TelegramNotifier()
         self.logger = logging.getLogger(self.__class__.__name__)
         self.logger.setLevel(os.environ.get("LOGGING", logging.DEBUG))
-        self.telegram = TelegramNotifier()
 
     def _extract_incoming_message(self, event):
         return json.loads(event["body"])
+
+    def _verify_chat_id(self, incoming_message):
+        incoming_chat_id = incoming_message["message"]["chat"]["id"]
+        if incoming_chat_id != self.allowed_chat_id:
+            raise UnknownChatIdException(f"Chat id {incoming_chat_id} not allowed.")
 
     def _acknowledge(self, incoming_message):
         first_name = incoming_message["message"]["from"]["first_name"]
@@ -85,12 +98,16 @@ class Bouncer:
     def handle_event(self, event):
         try:
             event_body = self._extract_incoming_message(event)
+            self._verify_chat_id(event_body)
             self._acknowledge(event_body)
             self._start_state_machine(event_body)
             result = self._get_return_message(
                 status_code=200, message="Event received, state machine started."
             )
             self.telegram.send("Event received, starting processing.")
+        except UnknownChatIdException as e:
+            logging.exception(e)
+            result = self._get_return_message(status_code=403, message=str(e))
         except Exception as e:
             logging.exception(e)
             result = self._get_return_message(
