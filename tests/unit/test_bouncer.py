@@ -1,8 +1,9 @@
 import json
+import sys
 from unittest.mock import MagicMock
 
 import pytest
-from app import Bouncer
+from sauer import Bouncer
 
 BASE_EVENT = """
 {
@@ -51,7 +52,7 @@ BASE_MESSAGE = """
 
 @pytest.fixture
 def good_event():
-    event = json.loads(BASE_EVENT, BASE_MESSAGE)
+    event = json.loads(BASE_EVENT)
     event["body"] = json.dumps(BASE_MESSAGE)
     return event
 
@@ -80,10 +81,10 @@ def test_should_process_good_event_and_start_state_machine(good_event, bouncer):
     assert result["statusCode"] == 200
 
 
-def test_return_500_on_bad_event(bad_event, obs):
-    obs._start_state_machine = MagicMock()
+def test_return_500_on_bad_event(bad_event, bouncer):
+    bouncer._start_state_machine = MagicMock()
 
-    result = obs.handle_event(good_event)
+    result = bouncer.handle_event(good_event)
 
-    obs._start_state_machine.assert_not_called()
+    bouncer._start_state_machine.assert_not_called()
     assert result["statusCode"] == 500

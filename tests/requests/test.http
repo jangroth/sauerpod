@@ -1,4 +1,4 @@
-@baseUrlBouncer = https://hjp2njsps2foscbhedd3zd5w640jfnju.lambda-url.ap-southeast-2.on.aws
+@baseUrlBouncer = https://ly3yflr6kleex3icrmdzdu3kw40ixftn.lambda-url.ap-southeast-2.on.aws/
 @baseUrlTelegram = https://api.telegram.org
 
 # hello world message to bouncer
@@ -13,3 +13,10 @@ content-type: application/json
 
 # test message to bot
 {{baseUrlTelegram}}/bot{{$processEnv TELEGRAM_API_TOKEN}}/sendMessage?chat_id={{$processEnv TELEGRAM_CHAT_ID}}&parse_mode=HTML&text=test
+
+###
+
+# leave chat
+# freak: 758865481
+# jan: 173229021
+{{baseUrlTelegram}}/bot{{$processEnv TELEGRAM_API_TOKEN}}/leaveChat?chat_id=758865481

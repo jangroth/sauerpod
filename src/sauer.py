@@ -58,6 +58,7 @@ class Bouncer:
     def __init__(self) -> None:
         self.logger = logging.getLogger(self.__class__.__name__)
         self.logger.setLevel(os.environ.get("LOGGING", logging.DEBUG))
+        self.telegram = TelegramNotifier()
 
     def _extract_incoming_message(self, event):
         return json.loads(event["body"])
@@ -65,7 +66,7 @@ class Bouncer:
     def _acknowledge(self, incoming_message):
         first_name = incoming_message["message"]["from"]["first_name"]
         text = incoming_message["message"]["text"]
-        TelegramNotifier().send(f"Hello {first_name}, you said '{text}'.")
+        self.telegram.send(f"Hello {first_name}, you said '{text}'.")
 
     def _start_state_machine(self, message):
         pass

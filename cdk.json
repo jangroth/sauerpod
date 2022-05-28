@@ -13,7 +13,8 @@
       ".media",
       "scripts",
       "README.md",
-      "Makefile"
+      "Makefile",
+      "Makehelp",
     ]
   },
   "context": {

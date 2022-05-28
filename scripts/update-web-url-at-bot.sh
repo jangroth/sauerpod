@@ -1,4 +1,5 @@
-#!/usr/bin/env bash -eux
+#!/usr/bin/env bash
+set -eux
 
 if [[ -z "${TELEGRAM_API_TOKEN}" ]]; then
     exit 1
