@@ -1,5 +1,4 @@
 import json
-import sys
 from unittest.mock import MagicMock
 
 import pytest
@@ -7,19 +6,25 @@ from sauer import Bouncer
 
 BASE_EVENT = """
 {
-  "resource": "/video",
-  "headers": {
-    "Accept": "*/*"
-  },
-  "multiValueHeaders": {
-    "Accept": [
-      "*/*"
-    ]
-  },
-  "requestContext": {
-    "resourceId": "am7t8d"
-  },
-  "apiId": "chw6q7n9oc"
+    "version": "2.0",
+    "headers": {
+        "content-length": "307"
+    },
+    "requestContext": {
+        "accountId": "anonymous",
+        "http": {
+            "method": "POST",
+            "path": "/",
+            "protocol": "HTTP/1.1",
+            "sourceIp": "91.108.6.94"
+        },
+        "requestId": "822a0076-68b1-4043-af72-0f38df47d327",
+        "routeKey": "$default",
+        "stage": "$default",
+        "time": "10/May/2022:10:35:02 +0000",
+        "timeEpoch": 1652178902114
+    },
+    "isBase64Encoded": false
 }
 """
 
@@ -30,7 +35,7 @@ BASE_MESSAGE = """
         "message_id": 14,
         "from": {
             "id": 123456789,
-            "is_bot": False,
+            "is_bot": "False",
             "first_name": "first_name",
             "last_name": "last_name",
             "username": "username",
@@ -53,7 +58,7 @@ BASE_MESSAGE = """
 @pytest.fixture
 def good_event():
     event = json.loads(BASE_EVENT)
-    event["body"] = json.dumps(BASE_MESSAGE)
+    event["body"] = BASE_MESSAGE
     return event
 
 
@@ -77,7 +82,7 @@ def test_should_process_good_event_and_start_state_machine(good_event, bouncer):
 
     result = bouncer.handle_event(good_event)
 
-    bouncer._start_state_machine.assert_called_once_with({"url": "https://www.ccc.de"})
+    bouncer._start_state_machine.assert_called_once_with(json.loads(BASE_MESSAGE))
     assert result["statusCode"] == 200
 
 
