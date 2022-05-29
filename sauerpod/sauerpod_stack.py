@@ -25,6 +25,7 @@ class SauerpodStack(Stack):
                 ),
             ),
             handler="sauer.bouncer_handler",
+            reserved_concurrent_executions=2,
             environment={"LOGGING": "DEBUG"},
         )
         bouncer_fn_url = bouncer_lambda.add_function_url(
