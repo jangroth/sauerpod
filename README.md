@@ -1,7 +1,8 @@
 # SauerPod (WIP)
-![SauerPod](.media/sauerpod.drawio.png)
-
 A grumpy bot that downloads videos into a personalized podcast.
+
+
+![SauerPod](.media/sauerpod.drawio.png)
 
 ## Development setup
 ### Ramp Up
