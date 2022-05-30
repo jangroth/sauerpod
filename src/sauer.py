@@ -72,9 +72,11 @@ class Bouncer:
         return json.loads(event["body"])
 
     def _verify_chat_id(self, incoming_message):
-        incoming_chat_id = incoming_message["message"]["chat"]["id"]
+        incoming_chat_id = str(incoming_message["message"]["chat"]["id"])
         if incoming_chat_id != self.allowed_chat_id:
-            raise UnknownChatIdException(f"Chat id {incoming_chat_id} not allowed.")
+            msg = f"Chat id '{incoming_chat_id}' not allowed."
+            self.logger.info(msg)
+            raise UnknownChatIdException(msg)
 
     def _acknowledge(self, incoming_message):
         first_name = incoming_message["message"]["from"]["first_name"]
@@ -105,9 +107,9 @@ class Bouncer:
                 status_code=200, message="Event received, state machine started."
             )
             self.telegram.send("Event received, starting processing.")
-        except UnknownChatIdException as e:
-            logging.exception(e)
-            result = self._get_return_message(status_code=403, message=str(e))
+        except UnknownChatIdException:
+            # swallow stack trace. Return 200 to acknowledge & keep telegram from resending.
+            result = self._get_return_message(status_code=200, message="403 - private bot")
         except Exception as e:
             logging.exception(e)
             result = self._get_return_message(

@@ -85,7 +85,7 @@ def bouncer():
     the_object = Bouncer.__new__(Bouncer)
     the_object.logger = MagicMock()
     the_object.telegram = MagicMock()
-    the_object.allowed_chat_id = CHAT_ID_ALLOWED
+    the_object.allowed_chat_id = str(CHAT_ID_ALLOWED)
     return the_object
 
 
@@ -107,7 +107,7 @@ def test_return_500_on_bad_event(bad_event, bouncer):
     assert result["statusCode"] == 500
 
 
-def test_should_return_403_on_not_allowed_chat_id(good_event_bad_chat, bouncer):
+def test_should_return_privacy_message_on_bad_chat_id(good_event_bad_chat, bouncer):
     bouncer._acknowledge = MagicMock()
     bouncer._start_state_machine = MagicMock()
 
@@ -115,4 +115,4 @@ def test_should_return_403_on_not_allowed_chat_id(good_event_bad_chat, bouncer):
 
     bouncer._acknowledge.assert_not_called()
     bouncer._start_state_machine.assert_not_called()
-    assert result["statusCode"] == 403
+    assert result["statusCode"] == 200
