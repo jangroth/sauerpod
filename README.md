@@ -1,17 +1,23 @@
 # SauerPod (WIP)
-A grumpy bot that downloads videos into a personalized podcast.
-
+A grumpy telegram bot that downloads videos to S3 and publishes them as an audio podcast.
 
 ![SauerPod](.media/sauerpod.drawio.png)
 
-## Development setup
+## Development setup (WIP)
 ### Ramp Up
-* Telegram
-    * Create bot
-        * Get bot id from botfather
-    * Create chat
-        * Get chat.id from @RawDataBot
-* `./scripts/bootstrap-secrets.sh`
+The following steps are required for an initial setup.
+#### Telegram
+* Create bot
+    * -> Note `API token` from botfather
+* Initiate chat
+    * -> Note `chat id` (find out with e.g. @RawDataBot)
+
+#### AWS
+* Store secrets in SSM
+    * Change & run `./scripts/bootstrap-secrets.sh`
+    * Revert changes (to not commit secrete to git)
+        * `git restore scripts/bootstrap-secrets.sh`
+
 ### Prepare dev environment
 * Create/activate venv
 * Deploy stack (or `cdk watch`)

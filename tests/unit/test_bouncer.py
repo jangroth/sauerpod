@@ -1,5 +1,4 @@
 import json
-from email import message
 from unittest.mock import MagicMock
 
 import pytest
@@ -31,8 +30,8 @@ BASE_EVENT = """
 BASE_MESSAGE = """
 {
     "update_id": 58754382,
+    "message_id": 14,
     "message": {
-        "message_id": 14,
         "from": {
             "id": 123456789,
             "is_bot": "False",
@@ -61,7 +60,6 @@ CHAT_ID_FORBIDDEN = 111111111
 def good_event():
     event = json.loads(BASE_EVENT)
     base_message_json = json.loads(BASE_MESSAGE)
-    base_message_json["message"]["chat"]["id"] = CHAT_ID_ALLOWED
     event["body"] = json.dumps(base_message_json)
     return event
 
