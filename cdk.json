@@ -2,19 +2,13 @@
   "app": "python3 app.py",
   "watch": {
     "include": [
-      "**"
+      "sauerpod/*",
+      "src/*",
+      "app.py",
+      "cdk.json"
     ],
     "exclude": [
-      "cdk*.json",
-      "requirements*.txt",
-      "**/__init__.py",
-      "sauerpod/__pycache__",
-      "tests",
-      ".media",
-      "scripts",
-      "README.md",
-      "Makefile",
-      "Makehelp"
+      "**/__pycache__"
     ]
   },
   "context": {
