@@ -1,3 +1,4 @@
+[![build](https://github.com/jangroth/sauerpod/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/jangroth/sauerpod/actions/workflows/ci.yml)
 # SauerPod (WIP)
 A grumpy telegram bot that downloads videos to S3 and publishes them as an audio podcast.
 

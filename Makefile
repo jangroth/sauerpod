@@ -2,9 +2,14 @@
 include Makehelp
 
 ## Run linters & tests
-test:
+
+lint:
 	flake8
-	yamllint -f parsable .
+	yamllint --strict --format colored .
+	@echo '*** linters are happy ***'
+.PHONY: lint
+
+test: lint
 	PYTHONPATH=./src pytest --cov=src --cov-report term-missing
-	@echo '*** all checks passing ***'
+	@echo '*** tests are happy ***'
 .PHONY: test
