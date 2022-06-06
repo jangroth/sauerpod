@@ -83,6 +83,7 @@ def bad_event():
 @pytest.fixture()
 def bouncer():
     the_object = Bouncer.__new__(Bouncer)
+    the_object.sfn_client = MagicMock()
     the_object.logger = MagicMock()
     the_object.telegram = MagicMock()
     the_object.allowed_chat_id = str(CHAT_ID_ALLOWED)
@@ -98,13 +99,16 @@ def test_should_process_good_event_and_start_state_machine(good_event, bouncer):
     assert result["statusCode"] == 200
 
 
-def test_return_500_on_bad_event(bad_event, bouncer):
+def test_return_error_message_on_bad_event(bad_event, bouncer):
     bouncer._start_state_machine = MagicMock()
 
     result = bouncer.handle_event(bad_event)
 
     bouncer._start_state_machine.assert_not_called()
-    assert result["statusCode"] == 500
+    assert result["statusCode"] == 200
+    assert json.loads(result["body"])["message"].startswith(
+        "500 - error processing incoming event:"
+    )
 
 
 def test_should_return_privacy_message_on_bad_chat_id(good_event_bad_chat, bouncer):
@@ -116,3 +120,4 @@ def test_should_return_privacy_message_on_bad_chat_id(good_event_bad_chat, bounc
     bouncer._acknowledge.assert_not_called()
     bouncer._start_state_machine.assert_not_called()
     assert result["statusCode"] == 200
+    assert json.loads(result["body"])["message"].startswith("403 - private bot")

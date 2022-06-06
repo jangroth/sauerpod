@@ -61,6 +61,7 @@ class UnknownChatIdException(Exception):
 class Bouncer:
     def __init__(self) -> None:
         ssm_client = boto3.client("ssm")
+        self.sfn_client = boto3.client("stepfunctions")
         self.allowed_chat_id = ssm_client.get_parameter(
             Name="/sauerpod/telegram/chat-id"
         )["Parameter"]["Value"]
@@ -84,12 +85,11 @@ class Bouncer:
         self.telegram.send(f"Hello {first_name}, you said '{text}'.")
 
     def _start_state_machine(self, message):
-        pass
-        # response = self.sfn_client.start_execution(
-        #     stateMachineArn=os.environ.get('STATE_MACHINE', None),
-        #     input=json.dumps(message)
-        # )
-        # logging.info(f"Starting state machine: '{response['executionArn']}'")
+        response = self.sfn_client.start_execution(
+            stateMachineArn=os.environ["STATE_MACHINE_ARN"],
+            input=json.dumps(message)
+        )
+        logging.info(f"Starting state machine: '{response['executionArn']}'")
 
     def _get_return_message(self, status_code, message):
         return {
@@ -108,13 +108,16 @@ class Bouncer:
             )
             self.telegram.send("Event received, starting processing.")
         except UnknownChatIdException:
-            # swallow stack trace. Return 200 to acknowledge & keep telegram from resending.
-            result = self._get_return_message(status_code=200, message="403 - private bot")
+            # Swallow stack trace. Return 200 to acknowledge & keep telegram from resending.
+            result = self._get_return_message(
+                status_code=200, message="403 - private bot"
+            )
         except Exception as e:
             logging.exception(e)
+            # Return 200 to acknowledge & keep telegram from resending.
             result = self._get_return_message(
-                status_code=500,
-                message=f"Error processing incoming event {event}\n\n{e}",
+                status_code=200,
+                message=f"500 - error processing incoming event: {event}\n\n{e}",
             )
         return result
 
