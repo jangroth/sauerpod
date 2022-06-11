@@ -5,29 +5,28 @@ A grumpy telegram bot that downloads videos to S3 and publishes them as an audio
 ![SauerPod](.media/sauerpod.drawio.png)
 
 ## Development setup (WIP)
-### Ramp Up
-The following steps are required for an initial setup.
+### Intial setup
+Required once to set up the project:
 #### Telegram
 * Create bot
     * -> Note `API token` from botfather
 * Initiate chat
     * -> Note `chat id` (find out with e.g. @RawDataBot)
-
 #### AWS
 * Store secrets in SSM
-    * Change & run `./scripts/bootstrap-secrets.sh`
-    * Revert changes (to not commit secrete to git)
+    * Change values & run `./scripts/bootstrap-secrets.sh`
+    * Revert changes in file (to not commit secrets to git)
         * `git restore scripts/bootstrap-secrets.sh`
-
-### Prepare dev environment
-* Create/activate venv
-* Deploy stack (or `cdk watch`)
+### Local development
+Required for development work:
+* Create/activate venv (`. .venv/bin/activate`)
+* Configure AWS profile (`export AWS_PROFILE=xyz`)
+* Deploy stack (`cdk deploy` or `cdk watch`)
 * Point bot`s webhook to Lambda
-    * Source secrets
+    * **Source**(!) secrets (don't execute the script)
         `. ./scripts/get-secrets-from-ssm.sh`
     * Update web url at bot
         `./scripts/update-web-url-at-bot.sh`
-
 
 ## Resources
 * https://core.telegram.org/bots/api

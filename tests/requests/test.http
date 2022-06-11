@@ -1,22 +1,70 @@
-@baseUrlBouncer = https://ly3yflr6kleex3icrmdzdu3kw40ixftn.lambda-url.ap-southeast-2.on.aws/
-@baseUrlTelegram = https://api.telegram.org
+# Requires https://marketplace.visualstudio.com/items?itemName=humao.rest-client
+# Useful for debugging
 
-# hello world message to bouncer
-POST {{baseUrlBouncer}} HTTP/1.1
+@baseUrlTelegram = https://api.telegram.org
+# Update from stack output
+@sauerpod.BouncerUrl = https://tzz5cljalb.execute-api.ap-southeast-2.amazonaws.com/prod/sauerpod
+
+# validate sauerbot
+{{baseUrlTelegram}}/bot{{$processEnv TELEGRAM_API_TOKEN}}/getMe
+
+###
+
+# send test message to sauerbot
+{{baseUrlTelegram}}/bot{{$processEnv TELEGRAM_API_TOKEN}}/sendMessage
+  ?chat_id={{$processEnv TELEGRAM_CHAT_ID}}
+  &parse_mode=HTML
+  &text=test
+
+###
+
+# get webhook info from sauerbot
+{{baseUrlTelegram}}/bot{{$processEnv TELEGRAM_API_TOKEN}}/getWebhookInfo
+
+###
+
+# set webhook at sauerbot (https://core.telegram.org/bots/api#setwebhook)
+{{baseUrlTelegram}}/bot{{$processEnv TELEGRAM_API_TOKEN}}/setWebhook
+  ?url={{sauerpod.BouncerUrl}}
+  &drop_pending_updates=True
+  &max_connections=5
+
+###
+
+# delete webhook from sauerpot
+{{baseUrlTelegram}}/bot{{$processEnv TELEGRAM_API_TOKEN}}/deleteWebhook
+  ?drop_pending_updates=True
+
+###
+
+# send message directly to API (cutting out sauerpot)
+POST {{sauerpod.BouncerUrl}} HTTP/1.1
 content-type: application/json
 
 {
-    "message": "Hello back from your bouncer"
+  "update_id": 58754450,
+  "message": {
+    "message_id": 288,
+    "from": {
+      "id": {{$processEnv TELEGRAM_CHAT_ID}},
+      "is_bot": false,
+      "first_name": "Jan",
+      "last_name": "Groth",
+      "username": "JanGroth",
+      "language_code": "en"
+    },
+    "chat": {
+      "id": {{$processEnv TELEGRAM_CHAT_ID}},
+      "first_name": "Jan",
+      "last_name": "Groth",
+      "username": "JanGroth",
+      "type": "private"
+    },
+    "date": 1654746816,
+    "text": "d1"
+  }
 }
 
 ###
 
-# test message to bot
-{{baseUrlTelegram}}/bot{{$processEnv TELEGRAM_API_TOKEN}}/sendMessage?chat_id={{$processEnv TELEGRAM_CHAT_ID}}&parse_mode=HTML&text=test
-
-###
-
-# leave chat
-# freak: 758865481
-# jan: 173229021
-{{baseUrlTelegram}}/bot{{$processEnv TELEGRAM_API_TOKEN}}/leaveChat?chat_id=758865481
+GET {{sauerpod.BouncerUrl}}
