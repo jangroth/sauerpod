@@ -4,5 +4,6 @@ flake8
 pytest
 pytest-cov
 pytest-mock
+python-telegram-bot==20.0a0 # pre-release
 requests
 yamllint

@@ -7,4 +7,5 @@ fi
 
 BOUNCER_URL=$(aws cloudformation describe-stacks --query 'Stacks[?StackName==`sauerpod`][].Outputs[?OutputKey==`BouncerUrl`].OutputValue' --output text)
 
-curl "https://api.telegram.org/bot${TELEGRAM_API_TOKEN}/setWebhook?url=${BOUNCER_URL}"
+# https://core.telegram.org/bots/api#setwebhook
+curl "https://api.telegram.org/bot${TELEGRAM_API_TOKEN}/setWebhook?url=${BOUNCER_URL}&drop_pending_updates=True&max_connections=2"

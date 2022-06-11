@@ -1,4 +1,5 @@
 from aws_cdk import BundlingOptions, CfnOutput, Duration, Stack
+from aws_cdk import aws_apigateway as _aws_apigateway
 from aws_cdk import aws_iam as _iam
 from aws_cdk import aws_lambda as _lambda
 from aws_cdk import aws_stepfunctions as _aws_stepfunctions
@@ -19,8 +20,8 @@ class SauerpodStack(Stack):
 
         wait_job = _aws_stepfunctions.Wait(
             self,
-            "Wait 10 Seconds",
-            time=_aws_stepfunctions.WaitTime.duration(Duration.seconds(10)),
+            "Wait 2 Seconds",
+            time=_aws_stepfunctions.WaitTime.duration(Duration.seconds(2)),
         )
 
         succeed_job = _aws_stepfunctions.Succeed(self, "Succeeded", comment="succeeded")
@@ -57,14 +58,11 @@ class SauerpodStack(Stack):
                 ),
             ),
             handler="sauer.bouncer_handler",
-            reserved_concurrent_executions=2,
+            reserved_concurrent_executions=5,
             environment={
                 "LOGGING": "DEBUG",
                 "STATE_MACHINE_ARN": state_machine.state_machine_arn,
             },
-        )
-        bouncer_fn_url = bouncer_lambda.add_function_url(
-            auth_type=_lambda.FunctionUrlAuthType.NONE
         )
         bouncer_role = bouncer_lambda.role
         bouncer_role.add_managed_policy(
@@ -73,8 +71,24 @@ class SauerpodStack(Stack):
         state_machine.grant_start_execution(bouncer_role)
 
         #
-        # stack outputs
+        # bouncer API
         #
 
-        CfnOutput(self, "BouncerUrl", value=bouncer_fn_url.url)
+        sauerpod_api = _aws_apigateway.RestApi(
+            self, "SauerPodApi", rest_api_name="SauerPodApi"
+        )
+        bouncer_lambda_integration = sauerpod_api.LambdaIntegration(bouncer_lambda)
+        sauerpod_api.root.add_resource("sauerpod").add_method(
+            "POST", bouncer_lambda_integration
+        )
+
+        #
+        # stack outputs
+        #
+        CfnOutput(self, "RootUrl", value=sauerpod_api.url)
+        CfnOutput(
+            self,
+            "BouncerUrl",
+            value=f"https://${sauerpod_api.restApiId}.execute-api.${self.region}.amazonaws.com/sauerpod",
+        )
         CfnOutput(self, "StateMachineArn", value=state_machine.state_machine_arn)

@@ -1,13 +1,8 @@
-@baseUrlBouncer = https://ly3yflr6kleex3icrmdzdu3kw40ixftn.lambda-url.ap-southeast-2.on.aws/
+@baseUrlBouncer = https://ks3v5x3xzyafce4zbceslyqdka0jspsl.lambda-url.ap-southeast-2.on.aws/
 @baseUrlTelegram = https://api.telegram.org
 
-# hello world message to bouncer
-POST {{baseUrlBouncer}} HTTP/1.1
-content-type: application/json
-
-{
-    "message": "Hello back from your bouncer"
-}
+# validate bot
+{{baseUrlTelegram}}/bot{{$processEnv TELEGRAM_API_TOKEN}}/getMe
 
 ###
 
@@ -16,7 +11,45 @@ content-type: application/json
 
 ###
 
-# leave chat
-# freak: 758865481
-# jan: 173229021
-{{baseUrlTelegram}}/bot{{$processEnv TELEGRAM_API_TOKEN}}/leaveChat?chat_id=758865481
+# get webhook info
+{{baseUrlTelegram}}/bot{{$processEnv TELEGRAM_API_TOKEN}}/getWebhookInfo
+
+###
+
+# set webhook (https://core.telegram.org/bots/api#setwebhook)
+{{baseUrlTelegram}}/bot{{$processEnv TELEGRAM_API_TOKEN}}/setWebhook?url={{baseUrlBouncer}}&drop_pending_updates=True&max_connections=5
+
+###
+
+# delete webhook
+{{baseUrlTelegram}}/bot{{$processEnv TELEGRAM_API_TOKEN}}/deleteWebhook?drop_pending_updates=True
+
+###
+
+# simulate telegram invocation
+POST {{baseUrlBouncer}} HTTP/1.1
+content-type: application/json
+
+{
+  "update_id": 58754450,
+  "message": {
+    "message_id": 288,
+    "from": {
+      "id": 173229021,
+      "is_bot": false,
+      "first_name": "Jan",
+      "last_name": "Groth",
+      "username": "JanGroth",
+      "language_code": "en"
+    },
+    "chat": {
+      "id": 173229021,
+      "first_name": "Jan",
+      "last_name": "Groth",
+      "username": "JanGroth",
+      "type": "private"
+    },
+    "date": 1654746816,
+    "text": "d1"
+  }
+}
