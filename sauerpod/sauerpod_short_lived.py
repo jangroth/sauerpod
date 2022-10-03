@@ -3,16 +3,16 @@ from aws_cdk import aws_apigateway as _aws_apigateway
 from aws_cdk import aws_iam as _iam
 from aws_cdk import aws_lambda as _lambda
 from aws_cdk import aws_logs as _logs
-from aws_cdk import aws_stepfunctions as _aws_stepfunctions
+from aws_cdk import aws_stepfunctions as _sfn
 from aws_cdk import aws_stepfunctions_tasks as _tasks
-
-# from aws_cdk import aws_stepfunctions_tasks as _aws_stepfunctions_tasks
 from constructs import Construct
 
 
-class SauerpodStack(Stack):
-    def __init__(self, scope: Construct, construct_id: str, **kwargs) -> None:
-        super().__init__(scope, construct_id, **kwargs)
+class SauerpodShortLivedStack(Stack):
+    def __init__(
+        self, scope: Construct, construct_id: str, storage_bucket, **kwargs
+    ) -> None:
+        super().__init__(scope, construct_id, storage_bucket=storage_bucket, **kwargs)
 
         #
         # dispatcher lambda
@@ -43,23 +43,65 @@ class SauerpodStack(Stack):
         )
 
         #
+        # downloader lambda
+        #
+
+        downloader_lambda = _lambda.Function(
+            self,
+            "DownloaderLambda",
+            runtime=_lambda.Runtime.PYTHON_3_9,
+            code=_lambda.Code.from_asset(
+                "src",
+                bundling=BundlingOptions(
+                    image=_lambda.Runtime.PYTHON_3_9.bundling_image,
+                    command=[
+                        "bash",
+                        "-c",
+                        "pip install --no-cache -r requirements.txt -t /asset-output && cp -au . /asset-output",
+                    ],
+                ),
+            ),
+            handler="sauer.downloader_handler",
+            reserved_concurrent_executions=5,
+            environment={"LOGGING": "DEBUG"},
+        )
+        downloader_role = downloader_lambda.role
+        downloader_role.add_managed_policy(
+            _iam.ManagedPolicy.from_aws_managed_policy_name("AmazonSSMReadOnlyAccess")
+        )
+
+        #
         # steps definitions
         #
 
         dispatcher_step = _tasks.LambdaInvoke(
             self, "DispatcherTask", lambda_function=dispatcher_lambda
         )
-        job_succeeded = _aws_stepfunctions.Succeed(
-            self, "Succeeded", comment="succeeded"
+        downloader_step = _tasks.LambdaInvoke(
+            self, "DownloaderTask", lambda_function=downloader_lambda
         )
-        # job_failed = _aws_stepfunctions.Fail(self, "Failed", comment="failed")
+        job_succeeded = _sfn.Succeed(self, "Succeeded", comment="succeeded")
+        job_failed = _sfn.Fail(self, "Failed", comment="failed")
 
         #
         # state machine
         #
 
-        definition = dispatcher_step.next(job_succeeded)
-        state_machine = _aws_stepfunctions.StateMachine(
+        # fmt: off
+        definition = dispatcher_step.next(
+            _sfn.Choice(self, "Dispatcher?")
+                .when(_sfn.Condition.string_equals("$.status", "DOWNLOADER"), downloader_step.next(
+                    _sfn.Choice(self, "Downloader?")
+                        .when(_sfn.Condition.string_equals("$.status", "SUCCESS"), job_succeeded)
+                        .otherwise(job_failed)
+                ))
+            .when(_sfn.Condition.string_equals("$.status", "UNKNOWN_MESSAGE"), job_succeeded)
+            .otherwise(job_failed)
+        )
+        # fmt: on
+
+        # job_succeeded)
+        state_machine = _sfn.StateMachine(
             self, "StateMachine", definition=definition, timeout=Duration.minutes(5)
         )
 

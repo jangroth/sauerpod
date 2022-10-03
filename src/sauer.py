@@ -13,6 +13,11 @@ logger.setLevel(os.environ.get("LOGGING", logging.DEBUG))
 SSM_PATH_TELEGRAM_API_TOKEN = "/sauerpod/telegram/api-token"
 SSM_PATH_TELEGRAM_CHAT_ID = "/sauerpod/telegram/chat-id"
 
+STATUS_SUCCESS = "SUCCESS"
+STATUS_FAILURE = "FAILURE"
+STATUS_DOWNLOADER = "DOWNLOADER"
+STATUS_UNKNOWN_MESSAGE = "UNKNOWN_MESSAGE"
+
 
 def notify_cloudwatch(function):
     def wrapper(*args, **kwargs):
@@ -31,13 +36,13 @@ class UnknownChatIdException(Exception):
 
 
 class TelegramNotifier:
-    TELEGRAM_URL = "https://api.telegram.org/bot{api_token}/sendMessage?chat_id={chat_id}&parse_mode=HTML&text={message}"  # https://core.telegram.org/bots/faq#how-can-i-make-requests-in-response-to-updates
+    TELEGRAM_URL: str = "https://api.telegram.org/bot{api_token}/sendMessage?chat_id={chat_id}&parse_mode=HTML&text={message}"  # https://core.telegram.org/bots/faq#how-can-i-make-requests-in-response-to-updates
 
     def __init__(self) -> None:
         self.logger = logging.getLogger(self.__class__.__name__)
         self.logger.setLevel(os.environ.get("LOGGING", logging.DEBUG))
         self.ssm_client = boto3.client("ssm")
-        self.api_token = self.ssm_client.get_parameter(
+        self.api_token: = self.ssm_client.get_parameter(
             Name=SSM_PATH_TELEGRAM_API_TOKEN, WithDecryption=True
         )["Parameter"]["Value"]
         self.chat_id = self.ssm_client.get_parameter(Name=SSM_PATH_TELEGRAM_CHAT_ID)[
@@ -115,22 +120,47 @@ class Bouncer:
 
 
 class Dispatcher:
-    """Parses incomming message and returns result (to be dispatched by state machine)."""
+    """Parses incomming message and returns result for dispatching."""
 
     def __init__(self) -> None:
         self.logger = logging.getLogger(self.__class__.__name__)
         self.logger.setLevel(os.environ.get("LOGGING", logging.DEBUG))
         self.telegram = TelegramNotifier()
 
+    def _get_return_message(self, status, event):
+        return {"status": status, "event": event}
+
     def _acknowledge_message(self, incoming_message):
         first_name = incoming_message["message"]["from"]["first_name"]
         message = incoming_message["message"]["text"]
-        self.telegram.send(f"Hello {first_name}, you said '{message}'.")
+        self.telegram.send(f"Hello {first_name}, you said '{message}'.\nI'm not sure what to do with that.")
 
     def handle_event(self, event):
         self.logger.info(f"Dispatcher - called with {event}")
-        self._acknowledge_message(event)
-        self.telegram.send("this makes me very happy.")
+        incoming_message = event["message"]["text"]
+        if self.is_video_url(incoming_message):
+            result = self._get_return_message(STATUS_DOWNLOADER, event)
+        else:
+            self._acknowledge_message(event)
+            result = self._get_return_message(STATUS_UNKNOWN_MESSAGE, event)
+        return result
+
+class Downloader:
+    """Downloads video from submitted URL, stores in S3 & DynamoDB"""
+
+
+    def __init__(self) -> None:
+        self.logger = logging.getLogger(self.__class__.__name__)
+        self.logger.setLevel(os.environ.get("LOGGING", logging.DEBUG))
+        self.telegram = TelegramNotifier()
+
+    def _get_return_message(self, status, event):
+        return {"status": status, "event": event}
+
+    def handle_event(self, event):
+        self.logger.info(f"Downloader - called with {event}")
+        self.telegram.send(f"Hello from downloader! {event}")
+        return self._get_return_message(STATUS_SUCCESS, event)
 
 
 @notify_cloudwatch
@@ -150,5 +180,12 @@ def dispatcher_handler(event, context) -> dict:
         logging.exception(e)
     return result
 
+@notify_cloudwatch
+def downloaderr_handler(event, context) -> dict:
+    try:
+        result = Downloader().handle_event(event)
+    except Exception as e:
+        logging.exception(e)
+    return result
 
 # EOF - `cdk watch` complains about missing EOF otherwise
