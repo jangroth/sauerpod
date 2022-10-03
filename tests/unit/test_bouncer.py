@@ -52,8 +52,8 @@ BASE_MESSAGE = """
     }
 }
 """
-CHAT_ID_ALLOWED = 123456789
-CHAT_ID_FORBIDDEN = 111111111
+CHAT_ID_ALLOWED = "123456789"
+CHAT_ID_FORBIDDEN = "111111111"
 
 
 @pytest.fixture
@@ -86,11 +86,10 @@ def bouncer():
     the_object.sfn_client = MagicMock()
     the_object.logger = MagicMock()
     the_object.bot = MagicMock()
-    the_object.ALLOWED_CHAT_ID = str(CHAT_ID_ALLOWED)
+    the_object.allowed_chat_id = CHAT_ID_ALLOWED
     return the_object
 
 
-@pytest.mark.skip(reason="not implemented yet")
 def test_should_process_good_event_and_start_state_machine(good_event, bouncer):
     bouncer._start_state_machine = MagicMock()
 
@@ -98,6 +97,9 @@ def test_should_process_good_event_and_start_state_machine(good_event, bouncer):
 
     bouncer._start_state_machine.assert_called_once_with(json.loads(BASE_MESSAGE))
     assert result["statusCode"] == 200
+    assert result["body"] == json.dumps(
+        {"message": "Event received, state machine started."}
+    )
 
 
 def test_return_error_message_on_bad_event(bad_event, bouncer):

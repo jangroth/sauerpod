@@ -1,7 +1,6 @@
 import json
 import logging
 import os
-from typing import Callable
 
 import boto3
 import requests

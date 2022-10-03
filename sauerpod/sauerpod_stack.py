@@ -52,7 +52,7 @@ class SauerpodStack(Stack):
         job_succeeded = _aws_stepfunctions.Succeed(
             self, "Succeeded", comment="succeeded"
         )
-        job_failed = _aws_stepfunctions.Fail(self, "Failed", comment="failed")
+        # job_failed = _aws_stepfunctions.Fail(self, "Failed", comment="failed")
 
         #
         # state machine
