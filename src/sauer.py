@@ -42,7 +42,7 @@ class TelegramNotifier:
         self.logger = logging.getLogger(self.__class__.__name__)
         self.logger.setLevel(os.environ.get("LOGGING", logging.DEBUG))
         self.ssm_client = boto3.client("ssm")
-        self.api_token: = self.ssm_client.get_parameter(
+        self.api_token = self.ssm_client.get_parameter(
             Name=SSM_PATH_TELEGRAM_API_TOKEN, WithDecryption=True
         )["Parameter"]["Value"]
         self.chat_id = self.ssm_client.get_parameter(Name=SSM_PATH_TELEGRAM_CHAT_ID)[
@@ -133,9 +133,12 @@ class Dispatcher:
     def _acknowledge_message(self, incoming_message):
         first_name = incoming_message["message"]["from"]["first_name"]
         message = incoming_message["message"]["text"]
-        self.telegram.send(f"Hello {first_name}, you said '{message}'.\nI'm not sure what to do with that.")
+        self.telegram.send(
+            f"Hello {first_name}, you said '{message}'.\nI'm not sure what to do with that."
+        )
 
     def handle_event(self, event):
+        result = None
         self.logger.info(f"Dispatcher - called with {event}")
         incoming_message = event["message"]["text"]
         if self.is_video_url(incoming_message):
@@ -145,9 +148,9 @@ class Dispatcher:
             result = self._get_return_message(STATUS_UNKNOWN_MESSAGE, event)
         return result
 
+
 class Downloader:
     """Downloads video from submitted URL, stores in S3 & DynamoDB"""
-
 
     def __init__(self) -> None:
         self.logger = logging.getLogger(self.__class__.__name__)
@@ -180,6 +183,7 @@ def dispatcher_handler(event, context) -> dict:
         logging.exception(e)
     return result
 
+
 @notify_cloudwatch
 def downloaderr_handler(event, context) -> dict:
     try:
@@ -187,5 +191,6 @@ def downloaderr_handler(event, context) -> dict:
     except Exception as e:
         logging.exception(e)
     return result
+
 
 # EOF - `cdk watch` complains about missing EOF otherwise

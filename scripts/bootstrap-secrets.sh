@@ -3,8 +3,9 @@
 TELEGRAM_API_TOKEN="value"
 TELEGRAM_CHAT_ID="value"
 
-if [[ $TELEGRAM_API_TOKEN=='value' || $TELEGRAM_CHAT_ID=='value' ]]; then
+if [[ "${TELEGRAM_API_TOKEN}" == 'value' || "${TELEGRAM_CHAT_ID}" == 'value' ]]; then
     echo 'Need to insert values!'
+    exit 1
 fi
 
 aws ssm put-parameter \

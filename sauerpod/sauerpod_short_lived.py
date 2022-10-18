@@ -3,6 +3,7 @@ from aws_cdk import aws_apigateway as _aws_apigateway
 from aws_cdk import aws_iam as _iam
 from aws_cdk import aws_lambda as _lambda
 from aws_cdk import aws_logs as _logs
+from aws_cdk import aws_s3 as _s3
 from aws_cdk import aws_stepfunctions as _sfn
 from aws_cdk import aws_stepfunctions_tasks as _tasks
 from constructs import Construct
@@ -10,9 +11,9 @@ from constructs import Construct
 
 class SauerpodShortLivedStack(Stack):
     def __init__(
-        self, scope: Construct, construct_id: str, storage_bucket, **kwargs
+        self, scope: Construct, construct_id: str, storage_bucket: _s3, **kwargs
     ) -> None:
-        super().__init__(scope, construct_id, storage_bucket=storage_bucket, **kwargs)
+        super().__init__(scope, construct_id, **kwargs)
 
         #
         # dispatcher lambda
@@ -63,12 +64,13 @@ class SauerpodShortLivedStack(Stack):
             ),
             handler="sauer.downloader_handler",
             reserved_concurrent_executions=5,
-            environment={"LOGGING": "DEBUG"},
+            environment={"LOGGING": "DEBUG", "STORAGE_BUCKET_NAME": storage_bucket.bucket_name},
         )
         downloader_role = downloader_lambda.role
         downloader_role.add_managed_policy(
             _iam.ManagedPolicy.from_aws_managed_policy_name("AmazonSSMReadOnlyAccess")
         )
+        storage_bucket.grant_read_write(downloader_role)
 
         #
         # steps definitions

@@ -1,6 +1,5 @@
 from aws_cdk import RemovalPolicy, Stack
 from aws_cdk import aws_s3 as _s3
-
 from constructs import Construct
 
 
@@ -11,5 +10,13 @@ class SauerpodLongLivedStack(Stack):
         #
         # storage bucket
         #
-        bucket = _s3.Bucket(self, "StorageBucket", removal_policy=RemovalPolicy.DESTROY)
+
+        bucket_name = f"{self.account}-{self.region}-sauerpod"
+        bucket = _s3.Bucket(
+            self,
+            "StorageBucket",
+            bucket_name=bucket_name,
+            encryption=_s3.BucketEncryption.KMS_MANAGED,
+            removal_policy=RemovalPolicy.DESTROY,
+        )
         self.storage_bucket = bucket
