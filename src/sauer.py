@@ -137,11 +137,14 @@ class Dispatcher:
             f"Hello {first_name}, you said '{message}'.\nI'm not sure what to do with that."
         )
 
+    def _is_video_url(self, message):
+        return message.startswith("https://youtu.be")
+
     def handle_event(self, event):
         result = None
         self.logger.info(f"Dispatcher - called with {event}")
         incoming_message = event["message"]["text"]
-        if self.is_video_url(incoming_message):
+        if self._is_video_url(incoming_message):
             result = self._get_return_message(STATUS_DOWNLOADER, event)
         else:
             self._acknowledge_message(event)
