@@ -36,7 +36,7 @@ class UnknownChatIdException(Exception):
 
 
 class TelegramNotifier:
-    TELEGRAM_URL: str = "https://api.telegram.org/bot{api_token}/sendMessage?chat_id={chat_id}&parse_mode=HTML&text={message}"  # https://core.telegram.org/bots/faq#how-can-i-make-requests-in-response-to-updates
+    TELEGRAM_URL: str = "https://api.telegram.org/bot{api_token}/sendMessage?chat_id={chat_id}&parse_mode={parse_mode}&text={text}&disable_web_page_preview={disable_web_page_preview}&disable_notification={disable_notification}"
 
     def __init__(self) -> None:
         self.logger = logging.getLogger(self.__class__.__name__)
@@ -49,10 +49,21 @@ class TelegramNotifier:
             "Parameter"
         ]["Value"]
 
-    def send(self, message: dict) -> None:
+    def send(
+        self,
+        text: str,
+        parse_mode="HTML",
+        disable_web_page_preview="True",
+        disable_notification="False",
+    ) -> None:
         response = requests.get(
             self.TELEGRAM_URL.format(
-                api_token=self.api_token, chat_id=self.chat_id, message=message
+                api_token=self.api_token,
+                chat_id=self.chat_id,
+                text=text,
+                parse_mode=parse_mode,
+                disable_web_page_preview=disable_web_page_preview,
+                disable_notification=disable_notification,
             )
         )
         self.logger.debug(f"Sent message, received: {response.content}")
@@ -130,11 +141,11 @@ class Dispatcher:
     def _get_return_message(self, status, event):
         return {"status": status, "event": event}
 
-    def _acknowledge_message(self, incoming_message):
-        first_name = incoming_message["message"]["from"]["first_name"]
-        message = incoming_message["message"]["text"]
+    def _send_response(self, incoming_event, response_text):
+        first_name = incoming_event["message"]["from"]["first_name"]
+        message = incoming_event["message"]["text"]
         self.telegram.send(
-            f"Hello {first_name}, you said '{message}'.\nI'm not sure what to do with that."
+            text=f"Hello {first_name}, you said '{message}'.\n{response_text}",
         )
 
     def _is_video_url(self, message):
@@ -145,9 +156,10 @@ class Dispatcher:
         self.logger.info(f"Dispatcher - called with {event}")
         incoming_message = event["message"]["text"]
         if self._is_video_url(incoming_message):
+            self._send_response(event, "A video. I got this.")
             result = self._get_return_message(STATUS_DOWNLOADER, event)
         else:
-            self._acknowledge_message(event)
+            self._send_response(event, "I'm not sure what to do with that.")
             result = self._get_return_message(STATUS_UNKNOWN_MESSAGE, event)
         return result
 

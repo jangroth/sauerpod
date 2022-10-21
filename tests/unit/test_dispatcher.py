@@ -53,14 +53,23 @@ def dispatcher():
     the_object = Dispatcher.__new__(Dispatcher)
     the_object.telegram = MagicMock()
     the_object.logger = MagicMock()
+    the_object._send_response = MagicMock()
     return the_object
 
 
 def test_should_dispatch_url_message(url_message, dispatcher):
     result = dispatcher.handle_event(url_message)
+
     assert result["status"] == STATUS_DOWNLOADER
+    dispatcher._send_response.assert_called_once_with(
+        url_message, "A video. I got this."
+    )
 
 
 def test_should_process_unknown_message(unknown_message, dispatcher):
     result = dispatcher.handle_event(unknown_message)
+
     assert result["status"] == STATUS_UNKNOWN_MESSAGE
+    dispatcher._send_response.assert_called_once_with(
+        unknown_message, "I'm not sure what to do with that."
+    )
