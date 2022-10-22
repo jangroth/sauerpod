@@ -77,10 +77,10 @@ class SauerpodShortLivedStack(Stack):
         #
 
         dispatcher_step = _tasks.LambdaInvoke(
-            self, "DispatcherTask", lambda_function=dispatcher_lambda
+            self, "DispatcherTask", lambda_function=dispatcher_lambda, output_path="$.Payload"
         )
         downloader_step = _tasks.LambdaInvoke(
-            self, "DownloaderTask", lambda_function=downloader_lambda
+            self, "DownloaderTask", lambda_function=downloader_lambda, output_path="$.Payload"
         )
         job_succeeded = _sfn.Succeed(self, "Succeeded", comment="succeeded")
         job_failed = _sfn.Fail(self, "Failed", comment="failed")

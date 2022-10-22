@@ -200,7 +200,7 @@ def dispatcher_handler(event, context) -> dict:
 
 
 @notify_cloudwatch
-def downloaderr_handler(event, context) -> dict:
+def downloader_handler(event, context) -> dict:
     try:
         result = Downloader().handle_event(event)
     except Exception as e:
