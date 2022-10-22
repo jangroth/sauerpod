@@ -1,9 +1,15 @@
 import json
 import logging
 import os
+import time
+from collections import namedtuple
+from datetime import datetime
+from pathlib import Path
 
 import boto3
 import requests
+from boto3.dynamodb.conditions import Key
+from pytube import YouTube
 
 logging.basicConfig(format="%(asctime)s %(name)s %(levelname)s %(message)s")
 logger = logging.getLogger("SauerPod")
@@ -14,9 +20,18 @@ SSM_PATH_TELEGRAM_API_TOKEN = "/sauerpod/telegram/api-token"
 SSM_PATH_TELEGRAM_CHAT_ID = "/sauerpod/telegram/chat-id"
 
 STATUS_SUCCESS = "SUCCESS"
+STATUS_NO_ACTION = "NO_ACTION"
 STATUS_FAILURE = "FAILURE"
 STATUS_DOWNLOADER = "DOWNLOADER"
 STATUS_UNKNOWN_MESSAGE = "UNKNOWN_MESSAGE"
+
+VideoInformation = namedtuple(
+    "VideoInformation",
+    ["video_id", "title", "views", "rating", "description", "source_url"],
+)
+UploadInformation = namedtuple(
+    "UploadInformation", ["bucket_path", "timestamp_utc", "file_size"]
+)
 
 
 def notify_cloudwatch(function):
@@ -77,7 +92,7 @@ class Bouncer:
     """Handles initial invocation from Telegram's webhook:
     * Basic sanity check of incoming message
     * Validate chat id (only allow specific chat id)
-    * Kick off state machine (if checks path)
+    * Kick off state machine
     * Ackknowledge Telegram with 200 response, regardless of the outcome (required by Telegram's API)
     """
 
@@ -100,9 +115,15 @@ class Bouncer:
             self.logger.info(msg)
             raise UnknownChatIdException(msg)
 
-    def _start_state_machine(self, message):
+    def _create_payload(self, incoming_message):
+        return dict(
+            incoming_text=incoming_message["message"]["text"],
+            sender=incoming_message["message"]["from"]["first_name"],
+        )
+
+    def _start_state_machine(self, payload):
         response = self.sfn_client.start_execution(
-            stateMachineArn=os.environ["STATE_MACHINE_ARN"], input=json.dumps(message)
+            stateMachineArn=os.environ["STATE_MACHINE_ARN"], input=json.dumps(payload)
         )
         self.logger.info(f"Starting state machine: '{response['executionArn']}'")
 
@@ -111,9 +132,10 @@ class Bouncer:
 
     def handle_event(self, event):
         try:
-            event_body = self._extract_incoming_message(event)
-            self._verify_chat_id(event_body)
-            self._start_state_machine(event_body)
+            incoming_message = self._extract_incoming_message(event)
+            self._verify_chat_id(incoming_message)
+            payload = self._create_payload(incoming_message)
+            self._start_state_machine(payload)
             result = self._get_return_message(
                 message="Event received, state machine started."
             )
@@ -141,26 +163,22 @@ class Dispatcher:
     def _get_return_message(self, status, event):
         return {"status": status, "event": event}
 
-    def _send_response(self, incoming_event, response_text):
-        first_name = incoming_event["message"]["from"]["first_name"]
-        message = incoming_event["message"]["text"]
+    def _send_telegram(self, payload, response_text):
         self.telegram.send(
-            text=f"Hello {first_name}, you said '{message}'.\n{response_text}",
+            text=f"Hello {payload['sender']}, you said '{payload['incoming_text']}'.\n{response_text}"
         )
 
-    def _is_video_url(self, message):
-        return message.startswith("https://youtu.be")
+    def _is_video_url(self, text):
+        return text.startswith("https://youtu.be")
 
-    def handle_event(self, event):
-        result = None
-        self.logger.info(f"Dispatcher - called with {event}")
-        incoming_message = event["message"]["text"]
-        if self._is_video_url(incoming_message):
-            self._send_response(event, "A video. I got this.")
-            result = self._get_return_message(STATUS_DOWNLOADER, event)
+    def handle_event(self, payload):
+        self.logger.info(f"Dispatcher - called with {payload}")
+        if self._is_video_url(payload["incoming_text"]):
+            self._send_telegram(payload, "A video. I got this.")
+            result = self._get_return_message(STATUS_DOWNLOADER, payload)
         else:
-            self._send_response(event, "I'm not sure what to do with that.")
-            result = self._get_return_message(STATUS_UNKNOWN_MESSAGE, event)
+            self._send_telegram(payload, "I'm not sure what to do with that.")
+            result = self._get_return_message(STATUS_UNKNOWN_MESSAGE, payload)
         return result
 
 
@@ -171,14 +189,93 @@ class Downloader:
         self.logger = logging.getLogger(self.__class__.__name__)
         self.logger.setLevel(os.environ.get("LOGGING", logging.DEBUG))
         self.telegram = TelegramNotifier()
+        self.storage_bucket_name = os.environ["STORAGE_BUCKET_NAME"]
+        self.storage_bucket = boto3.resource("s3").Bucket(self.storage_bucket_name)
+        self.storage_table_name = os.environ["STORAGE_TABLE_NAME"]
+        self.storage_table = boto3.resource("dynamodb").Table(self.storage_table_name)
+
+    def _populate_video_information(self, url):
+        yt = YouTube(url)
+        return VideoInformation(
+            video_id=yt.video_id,
+            title=yt.title,
+            views=yt.views,
+            rating=yt.rating,
+            description=yt.description,
+            source_url=url,
+        )
+
+    def _is_new_video(self, video_information):
+        return self.ddb_table.query(
+            KeyConditionExpression=Key("EpisodeId").eq(video_information.video_id)
+        )["Items"]
+
+    def _download_to_tmp(self, video_information):
+        return (
+            YouTube(video_information.source_url)
+            .streams.filter(only_audio=True)
+            .filter(subtype="mp4")
+            .order_by("abr")
+            .desc()
+            .first()
+            .download(output_path="/tmp", filename=f"{video_information.video_id}.mp4")
+        )
+
+    def _upload_to_s3(self, local_file_path, video_information):
+        file_name = os.path.basename(local_file_path)
+        bucket_path = f"audio/default/{file_name}"
+        self.storage_bucket.upload_file(local_file_path, bucket_path)
+        file_size = Path(local_file_path).stat().st_size
+        return UploadInformation(
+            bucket_path=bucket_path,
+            timestamp_utc=int(datetime.utcnow().timestamp()),
+            file_size=file_size,
+        )
+
+    def _store_metadata(self, download_information, video_information):
+        metadata = dict(
+            [
+                ("CastId", "default"),
+                ("EpisodeId", video_information.video_id),
+                ("Title", video_information.title),
+                ("Views", video_information.views),
+                ("Rating", str(video_information.rating)),
+                ("Description", video_information.description),
+                ("BucketPath", download_information.bucket_path),
+                ("TimestampUtc", str(download_information.timestamp_utc)),
+            ]
+        )
+        self.storage_table.put_item(Item=metadata)
+        logger.info(f"Storing metadata: {metadata}")
 
     def _get_return_message(self, status, event):
         return {"status": status, "event": event}
 
-    def handle_event(self, event):
-        self.logger.info(f"Downloader - called with {event}")
-        self.telegram.send(f"Hello from downloader! {event}")
-        return self._get_return_message(STATUS_SUCCESS, event)
+    def handle_event(self, payload):
+        try:
+            url = payload["incoming_text"]
+            video_information = self._populate_video_information(url)
+            if self._is_new_video(video_information):
+                start_time = time.time()
+                local_file_path = self._download_to_tmp(video_information)
+                upload_information = self._upload_to_s3(
+                    local_file_path, video_information
+                )
+                self._store_metadata(upload_information, video_information)
+                total_time = int(time.time() - start_time)
+                self.telegram.send(
+                    f"Download finished, database updated.\n\n<code>Title:{video_information.title}\nFile Size: {upload_information.file_size >> 20}MB\nTransfer time: {total_time}s</code>"
+                )
+                status = "SUCCESS"
+            else:
+                self.telegram.send(
+                    f"Video {video_information.title} already in the cast. Skipping download."
+                )
+                status = "NO_ACTION"
+        except Exception as e:
+            logger.exception(e)
+            status = "FAILURE"
+        return self._get_return_message(status, payload)
 
 
 @notify_cloudwatch
@@ -209,3 +306,23 @@ def downloader_handler(event, context) -> dict:
 
 
 # EOF - `cdk watch` complains about missing EOF otherwise
+
+
+if __name__ == "__main__":
+    stack_outputs = cfn_client = boto3.client("cloudformation").describe_stacks(
+        StackName="sauerpod-long-lived"
+    )["Stacks"][0]["Outputs"]
+    bucket_name = [
+        output["OutputValue"]
+        for output in stack_outputs
+        if output["OutputKey"] == "StorageBucketName"
+    ][0]
+    table_name = [
+        output["OutputValue"]
+        for output in stack_outputs
+        if output["OutputKey"] == "StorageTableName"
+    ][0]
+    os.environ["STORAGE_TABLE_NAME"] = table_name
+    os.environ["STORAGE_BUCKET_NAME"] = bucket_name
+    event = dict(event=dict(text="https://www.youtube.com/watch?v=JQUPEIXDLVg"))
+    Downloader().handle_event(event)

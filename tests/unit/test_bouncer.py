@@ -52,6 +52,13 @@ BASE_MESSAGE = """
     }
 }
 """
+PAYLOAD = """
+{
+    "incoming_text": "yoman",
+    "sender": "first_name"
+}
+"""
+
 CHAT_ID_ALLOWED = "123456789"
 CHAT_ID_FORBIDDEN = "111111111"
 
@@ -95,7 +102,7 @@ def test_should_process_good_event_and_start_state_machine(good_event, bouncer):
 
     result = bouncer.handle_event(good_event)
 
-    bouncer._start_state_machine.assert_called_once_with(json.loads(BASE_MESSAGE))
+    bouncer._start_state_machine.assert_called_once_with(json.loads(PAYLOAD))
     assert result["statusCode"] == 200
     assert result["body"] == json.dumps(
         {"message": "Event received, state machine started."}
@@ -124,3 +131,11 @@ def test_should_return_privacy_message_on_bad_chat_id(good_event_bad_chat, bounc
     bouncer._start_state_machine.assert_not_called()
     assert result["statusCode"] == 200
     assert json.loads(result["body"])["message"].startswith("403 - private bot")
+
+
+def test_should_extract_payload_from_incoming_message(good_event, bouncer):
+    event_body = bouncer._extract_incoming_message(good_event)
+
+    result = bouncer._create_payload(event_body)
+
+    assert result == json.loads(PAYLOAD)

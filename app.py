@@ -7,6 +7,11 @@ from sauerpod.sauerpod_short_lived import SauerpodShortLivedStack
 
 app = cdk.App()
 ll_stack = SauerpodLongLivedStack(app, "sauerpod-long-lived")
-SauerpodShortLivedStack(app, "sauerpod-short-lived", storage_bucket=ll_stack.storage_bucket)
+SauerpodShortLivedStack(
+    app,
+    "sauerpod-short-lived",
+    storage_bucket=ll_stack.storage_bucket,
+    storage_table=ll_stack.storage_table,
+)
 
 app.synth()

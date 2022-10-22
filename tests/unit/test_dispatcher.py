@@ -4,47 +4,28 @@ from unittest.mock import MagicMock
 import pytest
 from sauer import STATUS_DOWNLOADER, STATUS_UNKNOWN_MESSAGE, Dispatcher
 
-BASE_MESSAGE = """
+BASE_PAYLOAD = """
 {
-    "update_id": 58754382,
-    "message_id": 14,
-    "message": {
-        "from": {
-            "id": 123456789,
-            "is_bot": "False",
-            "first_name": "first_name",
-            "last_name": "last_name",
-            "username": "username",
-            "language_code": "en"
-        },
-        "chat": {
-            "id": 123456789,
-            "first_name": "first_name",
-            "last_name": "last_name",
-            "username": "username",
-            "type": "private"
-        },
-        "date": 1652178739,
-        "text": "yoman"
-    }
+    "incoming_text": "yoman",
+    "sender": "first_name"
 }
 """
 
-MESSAGE_VIDEO_URL = "https://youtu.be/123456"
-MESSAGE_FREE_TEXT = "hello"
+PAYLOAD_VIDEO_URL = "https://youtu.be/123456"
+PAYLOAD_FREE_TEXT = "hello"
 
 
 @pytest.fixture
 def url_message():
-    message = json.loads(BASE_MESSAGE)
-    message["message"]["text"] = MESSAGE_VIDEO_URL
+    message = json.loads(BASE_PAYLOAD)
+    message["incoming_text"] = PAYLOAD_VIDEO_URL
     return message
 
 
 @pytest.fixture
 def unknown_message():
-    message = json.loads(BASE_MESSAGE)
-    message["message"]["text"] = MESSAGE_FREE_TEXT
+    message = json.loads(BASE_PAYLOAD)
+    message["incoming_text"]= PAYLOAD_FREE_TEXT
     return message
 
 
@@ -53,7 +34,7 @@ def dispatcher():
     the_object = Dispatcher.__new__(Dispatcher)
     the_object.telegram = MagicMock()
     the_object.logger = MagicMock()
-    the_object._send_response = MagicMock()
+    the_object._send_telegram = MagicMock()
     return the_object
 
 
@@ -61,7 +42,7 @@ def test_should_dispatch_url_message(url_message, dispatcher):
     result = dispatcher.handle_event(url_message)
 
     assert result["status"] == STATUS_DOWNLOADER
-    dispatcher._send_response.assert_called_once_with(
+    dispatcher._send_telegram.assert_called_once_with(
         url_message, "A video. I got this."
     )
 
@@ -70,6 +51,6 @@ def test_should_process_unknown_message(unknown_message, dispatcher):
     result = dispatcher.handle_event(unknown_message)
 
     assert result["status"] == STATUS_UNKNOWN_MESSAGE
-    dispatcher._send_response.assert_called_once_with(
+    dispatcher._send_telegram.assert_called_once_with(
         unknown_message, "I'm not sure what to do with that."
     )

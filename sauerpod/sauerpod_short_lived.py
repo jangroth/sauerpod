@@ -1,5 +1,6 @@
 from aws_cdk import BundlingOptions, CfnOutput, Duration, Stack
 from aws_cdk import aws_apigateway as _aws_apigateway
+from aws_cdk import aws_dynamodb as _ddb
 from aws_cdk import aws_iam as _iam
 from aws_cdk import aws_lambda as _lambda
 from aws_cdk import aws_logs as _logs
@@ -11,7 +12,12 @@ from constructs import Construct
 
 class SauerpodShortLivedStack(Stack):
     def __init__(
-        self, scope: Construct, construct_id: str, storage_bucket: _s3, **kwargs
+        self,
+        scope: Construct,
+        construct_id: str,
+        storage_bucket: _s3,
+        storage_table: _ddb,
+        **kwargs,
     ) -> None:
         super().__init__(scope, construct_id, **kwargs)
 
@@ -64,23 +70,33 @@ class SauerpodShortLivedStack(Stack):
             ),
             handler="sauer.downloader_handler",
             reserved_concurrent_executions=5,
-            environment={"LOGGING": "DEBUG", "STORAGE_BUCKET_NAME": storage_bucket.bucket_name},
+            environment={
+                "LOGGING": "DEBUG",
+                "STORAGE_BUCKET_NAME": storage_bucket.bucket_name,
+            },
         )
         downloader_role = downloader_lambda.role
         downloader_role.add_managed_policy(
             _iam.ManagedPolicy.from_aws_managed_policy_name("AmazonSSMReadOnlyAccess")
         )
         storage_bucket.grant_read_write(downloader_role)
+        storage_table.grant_read_write_data(downloader_role)
 
         #
         # steps definitions
         #
 
         dispatcher_step = _tasks.LambdaInvoke(
-            self, "DispatcherTask", lambda_function=dispatcher_lambda, output_path="$.Payload"
+            self,
+            "DispatcherTask",
+            lambda_function=dispatcher_lambda,
+            output_path="$.Payload",
         )
         downloader_step = _tasks.LambdaInvoke(
-            self, "DownloaderTask", lambda_function=downloader_lambda, output_path="$.Payload"
+            self,
+            "DownloaderTask",
+            lambda_function=downloader_lambda,
+            output_path="$.Payload",
         )
         job_succeeded = _sfn.Succeed(self, "Succeeded", comment="succeeded")
         job_failed = _sfn.Fail(self, "Failed", comment="failed")

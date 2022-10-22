@@ -1,8 +1,9 @@
-boto3
 black
+boto3
 flake8
 pytest
 pytest-cov
 pytest-mock
+pytube
 requests
 yamllint
