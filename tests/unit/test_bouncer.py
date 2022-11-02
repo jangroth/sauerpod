@@ -54,8 +54,10 @@ BASE_MESSAGE = """
 """
 PAYLOAD = """
 {
-    "incoming_text": "yoman",
-    "sender": "first_name"
+    "message": {
+        "incoming_text": "yoman",
+        "sender": "first_name"
+    }
 }
 """
 

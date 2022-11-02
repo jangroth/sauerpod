@@ -18,12 +18,11 @@ logger.setLevel(os.environ.get("LOGGING", logging.DEBUG))
 
 SSM_PATH_TELEGRAM_API_TOKEN = "/sauerpod/telegram/api-token"
 SSM_PATH_TELEGRAM_CHAT_ID = "/sauerpod/telegram/chat-id"
-
-STATUS_SUCCESS = "SUCCESS"
-STATUS_NO_ACTION = "NO_ACTION"
-STATUS_FAILURE = "FAILURE"
-STATUS_DOWNLOADER = "DOWNLOADER"
+STATUS_DOWNLOADER = "FORWARD_TO_DOWNLOADER"
 STATUS_UNKNOWN_MESSAGE = "UNKNOWN_MESSAGE"
+STATUS_SUCCESS = "SUCCESS"
+STATUS_FAILURE = "FAILURE"
+STATUS_NO_ACTION = "NO_ACTION"
 
 VideoInformation = namedtuple(
     "VideoInformation",
@@ -116,10 +115,12 @@ class Bouncer:
             raise UnknownChatIdException(msg)
 
     def _create_payload(self, incoming_message):
-        return dict(
-            incoming_text=incoming_message["message"]["text"],
-            sender=incoming_message["message"]["from"]["first_name"],
-        )
+        return {
+            "message": {
+                "sender": incoming_message["message"]["from"]["first_name"],
+                "incoming_text": incoming_message["message"]["text"],
+            }
+        }
 
     def _start_state_machine(self, payload):
         response = self.sfn_client.start_execution(
@@ -160,24 +161,27 @@ class Dispatcher:
         self.logger.setLevel(os.environ.get("LOGGING", logging.DEBUG))
         self.telegram = TelegramNotifier()
 
-    def _get_return_message(self, status, event):
-        return {"status": status, "event": event}
+    def _get_return_message(self, status, payload):
+        return {"status": status, "message": payload["message"]}
 
-    def _send_telegram(self, payload, response_text):
+    def _send_telegram(self, message, response_text):
         self.telegram.send(
-            text=f"Hello {payload['sender']}, you said '{payload['incoming_text']}'.\n{response_text}"
+            text=f"Hello {message['sender']}, you said '{message['incoming_text']}'.\n\n{response_text}"
         )
 
     def _is_video_url(self, text):
-        return text.startswith("https://youtu.be")
+        return text.startswith("https://youtu.be") or text.startswith(
+            "https://www.youtube.com"
+        )
 
     def handle_event(self, payload):
         self.logger.info(f"Dispatcher - called with {payload}")
-        if self._is_video_url(payload["incoming_text"]):
-            self._send_telegram(payload, "A video. I got this.")
+        message = payload["message"]
+        if self._is_video_url(message["incoming_text"]):
+            self._send_telegram(message, "...A video. I got this.")
             result = self._get_return_message(STATUS_DOWNLOADER, payload)
         else:
-            self._send_telegram(payload, "I'm not sure what to do with that.")
+            self._send_telegram(message, "...I'm not sure what to do with that.")
             result = self._get_return_message(STATUS_UNKNOWN_MESSAGE, payload)
         return result
 
@@ -195,6 +199,7 @@ class Downloader:
         self.storage_table = boto3.resource("dynamodb").Table(self.storage_table_name)
 
     def _populate_video_information(self, url):
+        self.logger.info(f"Downloading video from {url}")
         yt = YouTube(url)
         return VideoInformation(
             video_id=yt.video_id,
@@ -206,6 +211,7 @@ class Downloader:
         )
 
     def _is_new_video(self, video_information):
+        self.logger.info(f"Is this new? {video_information}")
         return self.ddb_table.query(
             KeyConditionExpression=Key("EpisodeId").eq(video_information.video_id)
         )["Items"]
@@ -248,12 +254,14 @@ class Downloader:
         self.storage_table.put_item(Item=metadata)
         logger.info(f"Storing metadata: {metadata}")
 
-    def _get_return_message(self, status, event):
-        return {"status": status, "event": event}
+    def _get_return_message(self, status, payload):
+        return {"status": status, "message": payload["message"]}
 
     def handle_event(self, payload):
         try:
-            url = payload["incoming_text"]
+            self.logger.info(f"Downloader - called with {payload}")
+            message = payload["message"]
+            url = message["incoming_text"]
             video_information = self._populate_video_information(url)
             if self._is_new_video(video_information):
                 start_time = time.time()
@@ -303,9 +311,6 @@ def downloader_handler(event, context) -> dict:
     except Exception as e:
         logging.exception(e)
     return result
-
-
-# EOF - `cdk watch` complains about missing EOF otherwise
 
 
 if __name__ == "__main__":

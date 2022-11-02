@@ -73,6 +73,7 @@ class SauerpodShortLivedStack(Stack):
             environment={
                 "LOGGING": "DEBUG",
                 "STORAGE_BUCKET_NAME": storage_bucket.bucket_name,
+                "STORAGE_TABLE_NAME": storage_table.table_name,
             },
         )
         downloader_role = downloader_lambda.role
@@ -108,7 +109,7 @@ class SauerpodShortLivedStack(Stack):
         # fmt: off
         definition = dispatcher_step.next(
             _sfn.Choice(self, "Dispatcher?")
-                .when(_sfn.Condition.string_equals("$.status", "DOWNLOADER"), downloader_step.next(
+                .when(_sfn.Condition.string_equals("$.status", "FORWARD_TO_DOWNLOADER"), downloader_step.next(
                     _sfn.Choice(self, "Downloader?")
                         .when(_sfn.Condition.string_equals("$.status", "SUCCESS"), job_succeeded)
                         .otherwise(job_failed)
