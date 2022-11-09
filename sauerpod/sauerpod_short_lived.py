@@ -70,6 +70,7 @@ class SauerpodShortLivedStack(Stack):
             ),
             handler="sauer.downloader_handler",
             reserved_concurrent_executions=5,
+            timeout=Duration.minutes(15),
             environment={
                 "LOGGING": "DEBUG",
                 "STORAGE_BUCKET_NAME": storage_bucket.bucket_name,

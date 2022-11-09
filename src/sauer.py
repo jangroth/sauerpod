@@ -210,9 +210,9 @@ class Downloader:
             source_url=url,
         )
 
-    def _is_new_video(self, video_information):
+    def _is_existing_video(self, video_information):
         self.logger.info(f"Is this new? {video_information}")
-        return self.ddb_table.query(
+        return self.storage_table.query(
             KeyConditionExpression=Key("EpisodeId").eq(video_information.video_id)
         )["Items"]
 
@@ -263,7 +263,7 @@ class Downloader:
             message = payload["message"]
             url = message["incoming_text"]
             video_information = self._populate_video_information(url)
-            if self._is_new_video(video_information):
+            if not self._is_existing_video(video_information):
                 start_time = time.time()
                 local_file_path = self._download_to_tmp(video_information)
                 upload_information = self._upload_to_s3(
@@ -314,20 +314,20 @@ def downloader_handler(event, context) -> dict:
 
 
 if __name__ == "__main__":
-    stack_outputs = cfn_client = boto3.client("cloudformation").describe_stacks(
+    stack_outputs = boto3.client("cloudformation").describe_stacks(
         StackName="sauerpod-long-lived"
     )["Stacks"][0]["Outputs"]
-    bucket_name = [
+    bucket_name = next(
         output["OutputValue"]
         for output in stack_outputs
         if output["OutputKey"] == "StorageBucketName"
-    ][0]
-    table_name = [
+    )
+    table_name = next(
         output["OutputValue"]
         for output in stack_outputs
         if output["OutputKey"] == "StorageTableName"
-    ][0]
+    )
     os.environ["STORAGE_TABLE_NAME"] = table_name
     os.environ["STORAGE_BUCKET_NAME"] = bucket_name
-    event = dict(event=dict(text="https://www.youtube.com/watch?v=JQUPEIXDLVg"))
+    event = dict(message=dict(incoming_text="https://www.youtube.com/watch?v=JQUPEIXDLVg"))
     Downloader().handle_event(event)

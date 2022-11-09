@@ -6,8 +6,10 @@ from sauer import STATUS_NO_ACTION, STATUS_SUCCESS, Downloader
 
 BASE_PAYLOAD = """
 {
-    "incoming_text": "https://youtu.be/123456",
-    "sender": "first_name"
+    "message": {
+        "incoming_text": "https://youtu.be/123456",
+        "sender": "first_name"
+    }
 }
 """
 
@@ -28,7 +30,7 @@ def downloader():
 
 
 def test_should_process_video_if_new(base_message, downloader):
-    downloader._is_new_video = MagicMock(return_value=True)
+    downloader._is_existing_video = MagicMock(return_value=False)
     downloader._populate_video_information = MagicMock()
     downloader._download_to_tmp = MagicMock()
     downloader._upload_to_s3 = MagicMock()
@@ -43,7 +45,7 @@ def test_should_process_video_if_new(base_message, downloader):
 
 
 def test_should_ignore_video_if_not_new(base_message, downloader):
-    downloader._is_new_video = MagicMock(return_value=False)
+    downloader._is_existing_video = MagicMock(return_value=True)
     downloader._populate_video_information = MagicMock()
     downloader._download_to_tmp = MagicMock()
     downloader._upload_to_s3 = MagicMock()
