@@ -1,3 +1,4 @@
+import html
 import json
 import logging
 import os
@@ -50,7 +51,7 @@ class UnknownChatIdException(Exception):
 
 
 class TelegramNotifier:
-    TELEGRAM_URL: str = "https://api.telegram.org/bot{api_token}/sendMessage?chat_id={chat_id}&parse_mode={parse_mode}&text={text}&disable_web_page_preview={disable_web_page_preview}&disable_notification={disable_notification}"
+    TELEGRAM_URL: str = "https://api.telegram.org/bot{api_token}/sendMessage"
 
     def __init__(self) -> None:
         self.logger = logging.getLogger(self.__class__.__name__)
@@ -70,21 +71,24 @@ class TelegramNotifier:
         disable_web_page_preview="True",
         disable_notification="False",
     ) -> None:
-        response = requests.get(
-            self.TELEGRAM_URL.format(
+        self.logger.debug(f"Sending:\n{text}")
+        # https://core.telegram.org/bots/api#sendmessage
+        response = requests.post(
+            url=self.TELEGRAM_URL.format(
                 api_token=self.api_token,
-                chat_id=self.chat_id,
-                text=text,
-                parse_mode=parse_mode,
-                disable_web_page_preview=disable_web_page_preview,
-                disable_notification=disable_notification,
-            )
+            ),
+            data={
+                "chat_id": self.chat_id,
+                "parse_mode": parse_mode,
+                "disable_web_page_preview": disable_web_page_preview,
+                "disable_notification": disable_notification,
+                "text": text,
+            },
         )
-        self.logger.debug(f"Sent message, received: {response.content}")
-        if response.status_code != 200:
-            raise ValueError(
-                f"Request to Telegram returned error {response.status_code}, the complete response is:\n{response.text}"
-            )
+        self.logger.debug(
+            f"Sent message, response status: {response.status_code}\n{response.json()}"
+        )
+        response.raise_for_status()
 
 
 class Bouncer:
@@ -206,7 +210,7 @@ class Downloader:
             title=yt.title,
             views=yt.views,
             rating=yt.rating,
-            description=yt.description,
+            description=yt.description.encode("ascii", errors="ignore").decode(),
             source_url=url,
         )
 
@@ -272,12 +276,12 @@ class Downloader:
                 self._store_metadata(upload_information, video_information)
                 total_time = int(time.time() - start_time)
                 self.telegram.send(
-                    f"Download finished, database updated.\n\n<code>Title:{video_information.title}\nFile Size: {upload_information.file_size >> 20}MB\nTransfer time: {total_time}s</code>"
+                    f"Download finished, database updated.\n\n<pre>Title: {video_information.title}\nFile Size: {upload_information.file_size >> 20}MB\nTransfer time: {total_time}s</pre>"
                 )
                 status = "SUCCESS"
             else:
                 self.telegram.send(
-                    f"Video {video_information.title} already in the cast. Skipping download."
+                    f"'{video_information.title}' is already in your cast. Skipping download."
                 )
                 status = "NO_ACTION"
         except Exception as e:
@@ -329,5 +333,5 @@ if __name__ == "__main__":
     )
     os.environ["STORAGE_TABLE_NAME"] = table_name
     os.environ["STORAGE_BUCKET_NAME"] = bucket_name
-    event = dict(message=dict(incoming_text="https://www.youtube.com/watch?v=JQUPEIXDLVg"))
+    event = dict(message=dict(incoming_text="https://youtu.be/dW2utwg9oOg"))
     Downloader().handle_event(event)
