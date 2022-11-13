@@ -276,12 +276,12 @@ class Downloader:
                 self._store_metadata(upload_information, video_information)
                 total_time = int(time.time() - start_time)
                 self.telegram.send(
-                    f"Download finished, database updated.\n\n<pre>Title: {video_information.title}\nFile Size: {upload_information.file_size >> 20}MB\nTransfer time: {total_time}s</pre>"
+                    f"...Download finished, database updated:\n<pre> Title: {video_information.title}\n File Size: {upload_information.file_size >> 20}MB\n Download time: {total_time}s</pre>"
                 )
                 status = "SUCCESS"
             else:
                 self.telegram.send(
-                    f"'{video_information.title}' is already in your cast. Skipping download."
+                    f"...'{video_information.title}' is already in your cast. Skipping download."
                 )
                 status = "NO_ACTION"
         except Exception as e:
@@ -296,6 +296,7 @@ def bouncer_handler(event, context) -> dict:
         result = Bouncer().handle_event(event)
     except Exception as e:
         logging.exception(e)
+        TelegramNotifier().send(str(e))
     return result
 
 
@@ -305,6 +306,7 @@ def dispatcher_handler(event, context) -> dict:
         result = Dispatcher().handle_event(event)
     except Exception as e:
         logging.exception(e)
+        TelegramNotifier().send(str(e))
     return result
 
 
@@ -314,6 +316,7 @@ def downloader_handler(event, context) -> dict:
         result = Downloader().handle_event(event)
     except Exception as e:
         logging.exception(e)
+        TelegramNotifier().send(str(e))
     return result
 
 
