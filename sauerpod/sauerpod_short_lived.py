@@ -85,7 +85,42 @@ class SauerpodShortLivedStack(Stack):
         storage_table.grant_read_write_data(downloader_role)
 
         #
-        # steps definitions
+        # downloader lambda
+        #
+
+        podcaster_lambda = _lambda.Function(
+            self,
+            "Podcaster_Lambda",
+            runtime=_lambda.Runtime.PYTHON_3_9,
+            code=_lambda.Code.from_asset(
+                "src",
+                bundling=BundlingOptions(
+                    image=_lambda.Runtime.PYTHON_3_9.bundling_image,
+                    command=[
+                        "bash",
+                        "-c",
+                        "pip install --no-cache -r requirements.txt -t /asset-output && cp -au . /asset-output",
+                    ],
+                ),
+            ),
+            handler="sauer.podcaster_handler",
+            reserved_concurrent_executions=5,
+            timeout=Duration.minutes(15),
+            environment={
+                "LOGGING": "DEBUG",
+                "STORAGE_BUCKET_NAME": storage_bucket.bucket_name,
+                "STORAGE_TABLE_NAME": storage_table.table_name,
+            },
+        )
+        podcaster_role = podcaster_lambda.role
+        podcaster_role.add_managed_policy(
+            _iam.ManagedPolicy.from_aws_managed_policy_name("AmazonSSMReadOnlyAccess")
+        )
+        storage_bucket.grant_read_write(podcaster_role)
+        storage_table.grant_read_data(podcaster_role)
+
+        #
+        # statemachine components
         #
 
         dispatcher_step = _tasks.LambdaInvoke(
@@ -100,27 +135,37 @@ class SauerpodShortLivedStack(Stack):
             lambda_function=downloader_lambda,
             output_path="$.Payload",
         )
+        podcaster_step = _tasks.LambdaInvoke(
+            self,
+            "PodcasterTask",
+            lambda_function=podcaster_lambda,
+            output_path="$.Payload",
+        )
         job_succeeded = _sfn.Succeed(self, "Succeeded", comment="succeeded")
         job_failed = _sfn.Fail(self, "Failed", comment="failed")
+
+        # fmt: off
+        choice_podcaster = _sfn.Choice(self, "Podcaster?")\
+            .when(_sfn.Condition.string_equals("$.status", "SUCCESS"), job_succeeded)\
+            .otherwise(job_failed)
+        choice_downloader = _sfn.Choice(self, "Downloader?")\
+            .when(_sfn.Condition.string_equals("$.status", "SUCCESS"), podcaster_step)\
+            .when(_sfn.Condition.string_equals("$.status", "NO_ACTION"), podcaster_step)\
+            .otherwise(job_failed)
+        choice_dispatcher = _sfn.Choice(self, "Dispatcher?")\
+            .when(_sfn.Condition.string_equals("$.status", "FORWARD_TO_DOWNLOADER"), downloader_step)\
+            .otherwise(job_failed)
+        # fmt: on
+
+        dispatcher_step.next(choice_dispatcher)
+        downloader_step.next(choice_downloader)
+        podcaster_step.next(choice_podcaster)
 
         #
         # state machine
         #
 
-        # fmt: off
-        definition = dispatcher_step.next(
-            _sfn.Choice(self, "Dispatcher?")
-                .when(_sfn.Condition.string_equals("$.status", "FORWARD_TO_DOWNLOADER"), downloader_step.next(
-                    _sfn.Choice(self, "Downloader?")
-                        .when(_sfn.Condition.string_equals("$.status", "SUCCESS"), job_succeeded)
-                        .otherwise(job_failed)
-                ))
-            .when(_sfn.Condition.string_equals("$.status", "UNKNOWN_MESSAGE"), job_succeeded)
-            .otherwise(job_failed)
-        )
-        # fmt: on
-
-        # job_succeeded)
+        definition = _sfn.Chain.start(dispatcher_step)
         state_machine = _sfn.StateMachine(
             self, "StateMachine", definition=definition, timeout=Duration.minutes(5)
         )

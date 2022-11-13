@@ -290,13 +290,39 @@ class Downloader:
         return self._get_return_message(status, payload)
 
 
+class Podcaster:
+    """Updates podcast feed"""
+
+    def __init__(self) -> None:
+        self.logger = logging.getLogger(self.__class__.__name__)
+        self.logger.setLevel(os.environ.get("LOGGING", logging.DEBUG))
+        self.telegram = TelegramNotifier()
+        self.storage_bucket_name = os.environ["STORAGE_BUCKET_NAME"]
+        self.storage_bucket = boto3.resource("s3").Bucket(self.storage_bucket_name)
+        self.storage_table_name = os.environ["STORAGE_TABLE_NAME"]
+        self.storage_table = boto3.resource("dynamodb").Table(self.storage_table_name)
+
+    def _get_return_message(self, status, payload):
+        return {"status": status, "message": payload["message"]}
+
+    def handle_event(self, payload):
+        try:
+            self.logger.info(f"Podcater - called with {payload}")
+            self.telegram.send("...Updating podcast")
+            status = "SUCCESS"
+        except Exception as e:
+            logger.exception(e)
+            status = "FAILURE"
+        return self._get_return_message(status, payload)
+
+
 @notify_cloudwatch
 def bouncer_handler(event, context) -> dict:
     try:
         result = Bouncer().handle_event(event)
     except Exception as e:
         logging.exception(e)
-        TelegramNotifier().send(str(e))
+        TelegramNotifier().send(f"⚠️ {str(e)}")
     return result
 
 
@@ -306,7 +332,7 @@ def dispatcher_handler(event, context) -> dict:
         result = Dispatcher().handle_event(event)
     except Exception as e:
         logging.exception(e)
-        TelegramNotifier().send(str(e))
+        TelegramNotifier().send(f"⚠️ {str(e)}")
     return result
 
 
@@ -314,6 +340,16 @@ def dispatcher_handler(event, context) -> dict:
 def downloader_handler(event, context) -> dict:
     try:
         result = Downloader().handle_event(event)
+    except Exception as e:
+        logging.exception(e)
+        TelegramNotifier().send(f"⚠️ {str(e)}")
+    return result
+
+
+@notify_cloudwatch
+def podcaster_handler(event, context) -> dict:
+    try:
+        result = Podcaster().handle_event(event)
     except Exception as e:
         logging.exception(e)
         TelegramNotifier().send(str(e))
