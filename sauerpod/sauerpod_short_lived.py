@@ -154,6 +154,7 @@ class SauerpodShortLivedStack(Stack):
             .otherwise(job_failed)
         choice_dispatcher = _sfn.Choice(self, "Dispatching Result?")\
             .when(_sfn.Condition.string_equals("$.status", "FORWARD_TO_DOWNLOADER"), downloader_step)\
+            .when(_sfn.Condition.string_equals("$.status", "UNKNOWN_MESSAGE"), job_succeeded)\
             .otherwise(job_failed)
         # fmt: on
 

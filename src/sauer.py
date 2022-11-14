@@ -1,10 +1,9 @@
-import html
 import json
 import logging
 import os
 import time
 from collections import namedtuple
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import boto3
@@ -189,7 +188,7 @@ class Dispatcher:
                 status = STATUS_UNKNOWN_MESSAGE
         except Exception as e:
             logger.exception(e)
-            self.telegram.send(f"⚠️ {str(e)}")
+            self.telegram.send(f"⚠️ Error: '{str(e)}'")
             status = STATUS_FAILURE
         return self._get_return_message(status, payload)
 
@@ -281,8 +280,8 @@ class Downloader:
                 self._store_metadata(upload_information, video_information)
                 total_time = int(time.time() - start_time)
                 self.telegram.send(
-                    f"""...Download finished, database updated:\n
-                    <pre> Title: {video_information.title}\n Length: {datetime.timedelta(seconds=video_information.length)}\n File Size: {upload_information.file_size >> 20}MB\n Time to Download: {total_time}s</pre>
+                    f"""...Download finished, database updated:
+                    \n<pre> Title: {video_information.title}\n Length: {timedelta(seconds=video_information.length)}\n File Size: {upload_information.file_size >> 20}MB\n Time to Download: {total_time}s</pre>
                     """
                 )
                 status = STATUS_SUCCESS
@@ -293,7 +292,7 @@ class Downloader:
                 status = STATUS_NO_ACTION
         except Exception as e:
             logger.exception(e)
-            self.telegram.send(f"⚠️ {str(e)}")
+            self.telegram.send(f"⚠️ Error: '{str(e)}'")
             status = STATUS_FAILURE
         return self._get_return_message(status, payload)
 
@@ -320,7 +319,7 @@ class Podcaster:
             status = STATUS_SUCCESS
         except Exception as e:
             logger.exception(e)
-            self.telegram.send(f"⚠️ {str(e)}")
+            self.telegram.send(f"⚠️ Error: '{str(e)}'")
             status = STATUS_FAILURE
         return self._get_return_message(status, payload)
 
@@ -346,20 +345,21 @@ def podcaster_handler(event, context) -> dict:
 
 
 if __name__ == "__main__":
-    stack_outputs = boto3.client("cloudformation").describe_stacks(
-        StackName="sauerpod-long-lived"
-    )["Stacks"][0]["Outputs"]
-    bucket_name = next(
-        output["OutputValue"]
-        for output in stack_outputs
-        if output["OutputKey"] == "StorageBucketName"
-    )
-    table_name = next(
-        output["OutputValue"]
-        for output in stack_outputs
-        if output["OutputKey"] == "StorageTableName"
-    )
-    os.environ["STORAGE_TABLE_NAME"] = table_name
-    os.environ["STORAGE_BUCKET_NAME"] = bucket_name
-    event = dict(message=dict(incoming_text="https://youtu.be/dW2utwg9oOg"))
-    Downloader().handle_event(event)
+    pass
+    # stack_outputs = boto3.client("cloudformation").describe_stacks(
+    #     StackName="sauerpod-long-lived"
+    # )["Stacks"][0]["Outputs"]
+    # bucket_name = next(
+    #     output["OutputValue"]
+    #     for output in stack_outputs
+    #     if output["OutputKey"] == "StorageBucketName"
+    # )
+    # table_name = next(
+    #     output["OutputValue"]
+    #     for output in stack_outputs
+    #     if output["OutputKey"] == "StorageTableName"
+    # )
+    # os.environ["STORAGE_TABLE_NAME"] = table_name
+    # os.environ["STORAGE_BUCKET_NAME"] = bucket_name
+    # event = dict(message=dict(incoming_text="https://youtu.be/dW2utwg9oOg"))
+    # Downloader().handle_event(event)
