@@ -312,10 +312,20 @@ class Podcaster:
     def _get_return_message(self, status, payload):
         return {"status": status, "message": payload["message"]}
 
+    def _retrieve_metadata(self):
+        items = self.storage_table.scan()[
+            "Items"
+        ]  # yes we want everything -> scan over query
+        return items
+
+    def _build_rss_feed(self, items):
+        pass
+
     def handle_event(self, payload):
         try:
             self.logger.info(f"Podcater - called with {payload}")
-            self.telegram.send("...Updating podcast")
+            metadata = self._retrieve_metadata()
+            self._build_rss_feed(metadata)
             status = STATUS_SUCCESS
         except Exception as e:
             logger.exception(e)

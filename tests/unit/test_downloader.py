@@ -2,7 +2,7 @@ import json
 from unittest.mock import MagicMock
 
 import pytest
-from sauer import STATUS_NO_ACTION, STATUS_SUCCESS, Downloader
+from sauer import STATUS_NO_ACTION, STATUS_SUCCESS, Downloader, VideoInformation
 
 BASE_PAYLOAD = """
 {
@@ -21,6 +21,20 @@ def base_message():
 
 
 @pytest.fixture
+def video_information():
+    return VideoInformation(
+        video_id="video_id",
+        title="title",
+        length=123,
+        views=456,
+        rating="rating",
+        description="description",
+        source_url="source_url",
+    )
+    pass
+
+
+@pytest.fixture
 def downloader():
     the_object = Downloader.__new__(Downloader)
     the_object.telegram = MagicMock()
@@ -29,9 +43,9 @@ def downloader():
     return the_object
 
 
-def test_should_process_video_if_new(base_message, downloader):
+def test_should_process_video_if_new(base_message, video_information, downloader):
     downloader._is_existing_video = MagicMock(return_value=False)
-    downloader._populate_video_information = MagicMock()
+    downloader._populate_video_information = MagicMock(return_value=video_information)
     downloader._download_to_tmp = MagicMock()
     downloader._upload_to_s3 = MagicMock()
     downloader._store_metadata = MagicMock()
