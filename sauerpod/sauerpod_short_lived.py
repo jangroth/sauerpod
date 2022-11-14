@@ -148,11 +148,11 @@ class SauerpodShortLivedStack(Stack):
         choice_podcaster = _sfn.Choice(self, "Podcaster?")\
             .when(_sfn.Condition.string_equals("$.status", "SUCCESS"), job_succeeded)\
             .otherwise(job_failed)
-        choice_downloader = _sfn.Choice(self, "Downloader?")\
+        choice_downloader = _sfn.Choice(self, "Downloading Result?")\
             .when(_sfn.Condition.string_equals("$.status", "SUCCESS"), podcaster_step)\
             .when(_sfn.Condition.string_equals("$.status", "NO_ACTION"), podcaster_step)\
             .otherwise(job_failed)
-        choice_dispatcher = _sfn.Choice(self, "Dispatcher?")\
+        choice_dispatcher = _sfn.Choice(self, "Dispatching Result?")\
             .when(_sfn.Condition.string_equals("$.status", "FORWARD_TO_DOWNLOADER"), downloader_step)\
             .otherwise(job_failed)
         # fmt: on

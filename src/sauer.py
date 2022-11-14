@@ -27,7 +27,7 @@ STATUS_NO_ACTION = "NO_ACTION"
 
 VideoInformation = namedtuple(
     "VideoInformation",
-    ["video_id", "title", "views", "rating", "description", "source_url"],
+    ["video_id", "title", "length", "views", "rating", "description", "source_url"],
 )
 UploadInformation = namedtuple(
     "UploadInformation", ["bucket_path", "timestamp_utc", "file_size"]
@@ -153,7 +153,6 @@ class Bouncer:
             result = self._get_return_message(
                 message=f"500 - error processing incoming event: {event}\n\n{e}",
             )
-        self.logger.info(f"Bouncer - returning {result}")
         return result
 
 
@@ -179,15 +178,20 @@ class Dispatcher:
         )
 
     def handle_event(self, payload):
-        self.logger.info(f"Dispatcher - called with {payload}")
-        message = payload["message"]
-        if self._is_video_url(message["incoming_text"]):
-            self._send_telegram(message, "...A video. I got this.")
-            result = self._get_return_message(STATUS_DOWNLOADER, payload)
-        else:
-            self._send_telegram(message, "...I'm not sure what to do with that.")
-            result = self._get_return_message(STATUS_UNKNOWN_MESSAGE, payload)
-        return result
+        try:
+            self.logger.info(f"Dispatcher - called with {payload}")
+            message = payload["message"]
+            if self._is_video_url(message["incoming_text"]):
+                self._send_telegram(message, "...A video. I got this.")
+                status = STATUS_DOWNLOADER
+            else:
+                self._send_telegram(message, "...I'm not sure what to do with that.")
+                status = STATUS_UNKNOWN_MESSAGE
+        except Exception as e:
+            logger.exception(e)
+            self.telegram.send(f"⚠️ {str(e)}")
+            status = STATUS_FAILURE
+        return self._get_return_message(status, payload)
 
 
 class Downloader:
@@ -202,15 +206,19 @@ class Downloader:
         self.storage_table_name = os.environ["STORAGE_TABLE_NAME"]
         self.storage_table = boto3.resource("dynamodb").Table(self.storage_table_name)
 
+    def _get_return_message(self, status, payload):
+        return {"status": status, "message": payload["message"]}
+
     def _populate_video_information(self, url):
         self.logger.info(f"Downloading video from {url}")
         yt = YouTube(url)
         return VideoInformation(
             video_id=yt.video_id,
             title=yt.title,
+            length=yt.length,
             views=yt.views,
             rating=yt.rating,
-            description=yt.description.encode("ascii", errors="ignore").decode(),
+            description=yt.description,
             source_url=url,
         )
 
@@ -258,9 +266,6 @@ class Downloader:
         self.storage_table.put_item(Item=metadata)
         logger.info(f"Storing metadata: {metadata}")
 
-    def _get_return_message(self, status, payload):
-        return {"status": status, "message": payload["message"]}
-
     def handle_event(self, payload):
         try:
             self.logger.info(f"Downloader - called with {payload}")
@@ -276,17 +281,20 @@ class Downloader:
                 self._store_metadata(upload_information, video_information)
                 total_time = int(time.time() - start_time)
                 self.telegram.send(
-                    f"...Download finished, database updated:\n<pre> Title: {video_information.title}\n File Size: {upload_information.file_size >> 20}MB\n Download time: {total_time}s</pre>"
+                    f"""...Download finished, database updated:\n
+                    <pre> Title: {video_information.title}\n Length: {datetime.timedelta(seconds=video_information.length)}\n File Size: {upload_information.file_size >> 20}MB\n Time to Download: {total_time}s</pre>
+                    """
                 )
-                status = "SUCCESS"
+                status = STATUS_SUCCESS
             else:
                 self.telegram.send(
                     f"...'{video_information.title}' is already in your cast. Skipping download."
                 )
-                status = "NO_ACTION"
+                status = STATUS_NO_ACTION
         except Exception as e:
             logger.exception(e)
-            status = "FAILURE"
+            self.telegram.send(f"⚠️ {str(e)}")
+            status = STATUS_FAILURE
         return self._get_return_message(status, payload)
 
 
@@ -309,51 +317,32 @@ class Podcaster:
         try:
             self.logger.info(f"Podcater - called with {payload}")
             self.telegram.send("...Updating podcast")
-            status = "SUCCESS"
+            status = STATUS_SUCCESS
         except Exception as e:
             logger.exception(e)
-            status = "FAILURE"
+            self.telegram.send(f"⚠️ {str(e)}")
+            status = STATUS_FAILURE
         return self._get_return_message(status, payload)
 
 
 @notify_cloudwatch
 def bouncer_handler(event, context) -> dict:
-    try:
-        result = Bouncer().handle_event(event)
-    except Exception as e:
-        logging.exception(e)
-        TelegramNotifier().send(f"⚠️ {str(e)}")
-    return result
+    return Bouncer().handle_event(event)
 
 
 @notify_cloudwatch
 def dispatcher_handler(event, context) -> dict:
-    try:
-        result = Dispatcher().handle_event(event)
-    except Exception as e:
-        logging.exception(e)
-        TelegramNotifier().send(f"⚠️ {str(e)}")
-    return result
+    return Dispatcher().handle_event(event)
 
 
 @notify_cloudwatch
 def downloader_handler(event, context) -> dict:
-    try:
-        result = Downloader().handle_event(event)
-    except Exception as e:
-        logging.exception(e)
-        TelegramNotifier().send(f"⚠️ {str(e)}")
-    return result
+    return Downloader().handle_event(event)
 
 
 @notify_cloudwatch
 def podcaster_handler(event, context) -> dict:
-    try:
-        result = Podcaster().handle_event(event)
-    except Exception as e:
-        logging.exception(e)
-        TelegramNotifier().send(str(e))
-    return result
+    return Podcaster().handle_event(event)
 
 
 if __name__ == "__main__":
