@@ -10,7 +10,7 @@ from aws_cdk import aws_stepfunctions_tasks as _tasks
 from constructs import Construct
 
 
-class SauerpodShortLivedStack(Stack):
+class SauerpodLogicStack(Stack):
     def __init__(
         self,
         scope: Construct,

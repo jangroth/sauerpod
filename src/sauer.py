@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import tempfile
 import time
 from collections import namedtuple
 from datetime import datetime, timedelta
@@ -10,6 +11,8 @@ import boto3
 import requests
 from boto3.dynamodb.conditions import Key
 from pytube import YouTube
+from jinja2 import Environment, select_autoescape, PackageLoader
+
 
 logging.basicConfig(format="%(asctime)s %(name)s %(levelname)s %(message)s")
 logger = logging.getLogger("SauerPod")
@@ -298,7 +301,10 @@ class Downloader:
 
 
 class Podcaster:
-    """Updates podcast feed"""
+    """Generates podcast feed and uploads to S3"""
+
+    BUCKET_URL = "https://{bucket_name}.s3.amazonaws.com"
+    FEED_NAME = "default-feed.rss"
 
     def __init__(self) -> None:
         self.logger = logging.getLogger(self.__class__.__name__)
@@ -306,8 +312,15 @@ class Podcaster:
         self.telegram = TelegramNotifier()
         self.storage_bucket_name = os.environ["STORAGE_BUCKET_NAME"]
         self.storage_bucket = boto3.resource("s3").Bucket(self.storage_bucket_name)
+        self.storage_bucket_url = self.BUCKET_URL.format(
+            bucket_name=self.storage_bucket_name
+        )
         self.storage_table_name = os.environ["STORAGE_TABLE_NAME"]
         self.storage_table = boto3.resource("dynamodb").Table(self.storage_table_name)
+        self.jinja_env = Environment(
+            loader=PackageLoader("sauer"),
+            autoescape=select_autoescape(["html", "xml"]),
+        )
 
     def _get_return_message(self, status, payload):
         return {"status": status, "message": payload["message"]}
@@ -315,21 +328,44 @@ class Podcaster:
     def _retrieve_metadata(self):
         items = self.storage_table.scan()[
             "Items"
-        ]  # yes we want everything -> scan over query
+        ]  # yes we want everything here -> using scan instead of query operation
         return items
 
-    def _build_rss_feed(self, items):
-        pass
+    def _generate_rss_feed(self, metadata):
+        template = self.jinja_env.get_template("podcast.xml.j2")
+        output = template.render(
+            dict(
+                podcast=dict(
+                    bucket=f"{self.storage_bucket_url}",
+                    url=f"{self.storage_bucket_url}/rss",
+                    episodes=metadata,
+                )
+            )
+        )
+        return output
+
+    def _upload_feed_to_bucket(self, rss_feed):
+        with tempfile.NamedTemporaryFile(mode="w") as tmp_file:
+            tmp_file.write(rss_feed)
+            tmp_file.flush()
+            self.storage_bucket.upload_file(Filename=tmp_file.name, Key=self.FEED_NAME)
+        return f"{self.BUCKET_URL.format(bucket_name=self.storage_bucket_name)}/{self.FEED_NAME}"
 
     def handle_event(self, payload):
         try:
-            self.logger.info(f"Podcater - called with {payload}")
+            self.logger.info(f"Podcaster - called with {payload}")
             metadata = self._retrieve_metadata()
-            self._build_rss_feed(metadata)
+            feed = self._generate_rss_feed(metadata)
+            feed_url = self._upload_feed_to_bucket(feed)
+            self.telegram.send(
+                f"""...Podcast feed generated and uploaded:
+                \n<pre> {feed_url}</pre>
+                """
+            )
             status = STATUS_SUCCESS
         except Exception as e:
             logger.exception(e)
-            self.telegram.send(f"⚠️ Error: '{str(e)}'")
+            self.telegram.send(f"⚠️ Error:\n{e}'")
             status = STATUS_FAILURE
         return self._get_return_message(status, payload)
 
@@ -355,21 +391,20 @@ def podcaster_handler(event, context) -> dict:
 
 
 if __name__ == "__main__":
-    pass
-    # stack_outputs = boto3.client("cloudformation").describe_stacks(
-    #     StackName="sauerpod-long-lived"
-    # )["Stacks"][0]["Outputs"]
-    # bucket_name = next(
-    #     output["OutputValue"]
-    #     for output in stack_outputs
-    #     if output["OutputKey"] == "StorageBucketName"
-    # )
-    # table_name = next(
-    #     output["OutputValue"]
-    #     for output in stack_outputs
-    #     if output["OutputKey"] == "StorageTableName"
-    # )
-    # os.environ["STORAGE_TABLE_NAME"] = table_name
-    # os.environ["STORAGE_BUCKET_NAME"] = bucket_name
-    # event = dict(message=dict(incoming_text="https://youtu.be/dW2utwg9oOg"))
-    # Downloader().handle_event(event)
+    stack_outputs = boto3.client("cloudformation").describe_stacks(
+        StackName="sauerpod-long-lived"
+    )["Stacks"][0]["Outputs"]
+    bucket_name = next(
+        output["OutputValue"]
+        for output in stack_outputs
+        if output["OutputKey"] == "StorageBucketName"
+    )
+    table_name = next(
+        output["OutputValue"]
+        for output in stack_outputs
+        if output["OutputKey"] == "StorageTableName"
+    )
+    os.environ["STORAGE_TABLE_NAME"] = table_name
+    os.environ["STORAGE_BUCKET_NAME"] = bucket_name
+    event = dict(message=dict(incoming_text="https://youtu.be/dW2utwg9oOg"))
+    Podcaster().handle_event(event)

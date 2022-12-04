@@ -1,6 +1,7 @@
 black
 boto3
 flake8
+jinja2
 pytest
 pytest-cov
 pytest-mock

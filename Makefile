@@ -14,3 +14,4 @@ test: lint
 	PYTHONPATH=./src pytest --ignore=cdk.out --cov=src --cov-report term-missing
 	@echo '*** tests are happy ***'
 .PHONY: test
+
