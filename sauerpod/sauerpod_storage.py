@@ -16,6 +16,7 @@ class SauerpodStorageStack(Stack):
         bucket = _s3.Bucket(
             self,
             "StorageBucket",
+            auto_delete_objects=True,
             bucket_name=bucket_name,
             block_public_access=_s3.BlockPublicAccess.BLOCK_ALL,
             encryption=_s3.BucketEncryption.S3_MANAGED,

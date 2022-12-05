@@ -31,7 +31,6 @@ def video_information():
         description="description",
         source_url="source_url",
     )
-    pass
 
 
 @pytest.fixture
@@ -39,7 +38,6 @@ def downloader():
     the_object = Downloader.__new__(Downloader)
     the_object.telegram = MagicMock()
     the_object.logger = MagicMock()
-    the_object._send_telegram = MagicMock()
     return the_object
 
 

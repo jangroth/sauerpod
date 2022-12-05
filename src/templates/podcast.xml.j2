@@ -1,22 +1,22 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <rss xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd" xmlns:atom="http://www.w3.org/2005/Atom" version="2.0">
     <channel>
-        <atom:link href="{{ podcast.url }}" rel="self" type="application/rss+xml"/>
+        <atom:link href="{{ podcast.feed_url }}" rel="self" type="application/rss+xml"/>
         <title>Sauerpod Cast</title>
         <description>Generated with https://github.com/jangroth/sauerpod</description>
-        <link>{{ podcast.url }}</link>
+        <link>{{ podcast.feed_url }}</link>
 
-        <lastBuildDate>Thurs, 13 Feb 2020 00:00:00 -0800</lastBuildDate>
-        <pubDate>Thurs, 13 Feb 2020 00:00:00 -0800</pubDate>
+        <lastBuildDate>{{ podcast.last_build_date }}</lastBuildDate>
+        <pubDate>{{ podcast.last_build_date }}</pubDate>
         <language>en-us</language>
 
         {% for episode in podcast.episodes %}
             <item>
-                <title>{{ episode.Title }}</title>
-                <description>{{ episode.Description }}</description>
-                <link>{{ podcast.bucket~"/"~episode.BucketPath }}</link>
-                <enclosure url="{{ podcast.bucket~"/"~episode.BucketPath }}" type="audio/mpeg" length="1024"></enclosure>
-                <guid>{{ podcast.bucket~"/"~episode.BucketPath }}</guid>
+                <title>{{ episode.Title|e }}</title>
+                <description>{{ episode.Description|e }}</description>
+                <link>{{ podcast.base_url~"/"~episode.BucketPath }}</link>
+                <enclosure url="{{ podcast.base_url~"/"~episode.BucketPath }}" type="audio/mpeg" length="1024"></enclosure>
+                <guid>{{ podcast.base_url~"/"~episode.BucketPath }}</guid>
             </item>
         {% endfor %}
     </channel>

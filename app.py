@@ -9,12 +9,18 @@ from sauerpod.sauerpod_publish import SauerpodPublishStack
 app = cdk.App()
 
 storage_stack = SauerpodStorageStack(app, "sauerpod-storage-stack")
+publish_stack = SauerpodPublishStack(
+    app,
+    "sauerpod-publish-stack",
+    storage_bucket=storage_stack.storage_bucket,
+)
+
 SauerpodLogicStack(
     app,
     "sauerpod-logic-stack",
     storage_bucket=storage_stack.storage_bucket,
     storage_table=storage_stack.storage_table,
+    distribution=publish_stack.distribution,
 )
-publish_stack = SauerpodPublishStack(app, "sauerpod-publish-stack")
 
 app.synth()

@@ -7,6 +7,7 @@ from aws_cdk import aws_logs as _logs
 from aws_cdk import aws_s3 as _s3
 from aws_cdk import aws_stepfunctions as _sfn
 from aws_cdk import aws_stepfunctions_tasks as _tasks
+from aws_cdk import aws_cloudfront as _cloudfront
 from constructs import Construct
 
 
@@ -17,6 +18,7 @@ class SauerpodLogicStack(Stack):
         construct_id: str,
         storage_bucket: _s3,
         storage_table: _ddb,
+        distribution: _cloudfront,
         **kwargs,
     ) -> None:
         super().__init__(scope, construct_id, **kwargs)
@@ -108,6 +110,7 @@ class SauerpodLogicStack(Stack):
             timeout=Duration.minutes(15),
             environment={
                 "LOGGING": "DEBUG",
+                "DISTRIBUTION_DOMAIN_NAME": distribution.domain_name,
                 "STORAGE_BUCKET_NAME": storage_bucket.bucket_name,
                 "STORAGE_TABLE_NAME": storage_table.table_name,
             },

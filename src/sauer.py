@@ -5,6 +5,7 @@ import tempfile
 import time
 from collections import namedtuple
 from datetime import datetime, timedelta
+from email import utils
 from pathlib import Path
 
 import boto3
@@ -303,7 +304,6 @@ class Downloader:
 class Podcaster:
     """Generates podcast feed and uploads to S3"""
 
-    BUCKET_URL = "https://{bucket_name}.s3.amazonaws.com"
     FEED_NAME = "default-feed.rss"
 
     def __init__(self) -> None:
@@ -312,11 +312,10 @@ class Podcaster:
         self.telegram = TelegramNotifier()
         self.storage_bucket_name = os.environ["STORAGE_BUCKET_NAME"]
         self.storage_bucket = boto3.resource("s3").Bucket(self.storage_bucket_name)
-        self.storage_bucket_url = self.BUCKET_URL.format(
-            bucket_name=self.storage_bucket_name
-        )
         self.storage_table_name = os.environ["STORAGE_TABLE_NAME"]
         self.storage_table = boto3.resource("dynamodb").Table(self.storage_table_name)
+        self.base_url = f'https://{os.environ["DISTRIBUTION_DOMAIN_NAME"]}'
+        self.feed_url = f"{self.base_url}/{self.FEED_NAME}"
         self.jinja_env = Environment(
             loader=PackageLoader("sauer"),
             autoescape=select_autoescape(["html", "xml"]),
@@ -336,30 +335,30 @@ class Podcaster:
         output = template.render(
             dict(
                 podcast=dict(
-                    bucket=f"{self.storage_bucket_url}",
-                    url=f"{self.storage_bucket_url}/rss",
+                    last_build_date=utils.format_datetime(datetime.now()),
+                    base_url=self.base_url,
+                    feed_url=f"{self.base_url}/{self.FEED_NAME}",
                     episodes=metadata,
                 )
             )
         )
         return output
 
-    def _upload_feed_to_bucket(self, rss_feed):
+    def _upload_to_s3(self, rss_feed):
         with tempfile.NamedTemporaryFile(mode="w") as tmp_file:
             tmp_file.write(rss_feed)
             tmp_file.flush()
             self.storage_bucket.upload_file(Filename=tmp_file.name, Key=self.FEED_NAME)
-        return f"{self.BUCKET_URL.format(bucket_name=self.storage_bucket_name)}/{self.FEED_NAME}"
 
     def handle_event(self, payload):
         try:
             self.logger.info(f"Podcaster - called with {payload}")
             metadata = self._retrieve_metadata()
-            feed = self._generate_rss_feed(metadata)
-            feed_url = self._upload_feed_to_bucket(feed)
+            rss_feed = self._generate_rss_feed(metadata)
+            self._upload_to_s3(rss_feed)
             self.telegram.send(
                 f"""...Podcast feed generated and uploaded:
-                \n<pre> {feed_url}</pre>
+                \n <a href="{self.feed_url}">🎧 here 🎧</a>
                 """
             )
             status = STATUS_SUCCESS
