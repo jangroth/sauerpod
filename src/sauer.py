@@ -1,3 +1,4 @@
+import email
 import json
 import logging
 import os
@@ -5,8 +6,8 @@ import tempfile
 import time
 from collections import namedtuple
 from datetime import datetime, timedelta
-from email import utils
 from pathlib import Path
+from urllib import request
 
 import boto3
 import requests
@@ -30,10 +31,26 @@ STATUS_NO_ACTION = "NO_ACTION"
 
 VideoInformation = namedtuple(
     "VideoInformation",
-    ["video_id", "title", "length", "views", "rating", "description", "source_url"],
+    [
+        "video_id",
+        "title",
+        "author",
+        "description",
+        "thumbnail_url",
+        "duration_in_seconds",
+        "keywords",
+        "source_url",
+    ],
 )
 UploadInformation = namedtuple(
-    "UploadInformation", ["bucket_path", "timestamp_utc", "file_size"]
+    "UploadInformation",
+    [
+        "path_to_episode",
+        "path_to_thumbnail",
+        "timestamp_utc",
+        "timestamp_rfc822",
+        "episode_size",
+    ],
 )
 
 
@@ -71,8 +88,8 @@ class TelegramNotifier:
         self,
         text: str,
         parse_mode="HTML",
-        disable_web_page_preview="True",
-        disable_notification="False",
+        disable_web_page_preview=True,
+        disable_notification=False,
     ) -> None:
         self.logger.debug(f"Sending:\n{text}")
         # https://core.telegram.org/bots/api#sendmessage
@@ -172,7 +189,8 @@ class Dispatcher:
 
     def _send_telegram(self, message, response_text):
         self.telegram.send(
-            text=f"Hello {message['sender']}, you said '{message['incoming_text']}'.\n\n{response_text}"
+            text=f"Hello {message['sender']}, you said '{message['incoming_text']}'.\n\n{response_text}",
+            disable_notification=True,
         )
 
     def _is_video_url(self, text):
@@ -209,29 +227,30 @@ class Downloader:
         self.storage_table_name = os.environ["STORAGE_TABLE_NAME"]
         self.storage_table = boto3.resource("dynamodb").Table(self.storage_table_name)
 
-    def _get_return_message(self, status, payload):
+    def _get_return_message(self, status: str, payload: str) -> dict:
         return {"status": status, "message": payload["message"]}
 
-    def _populate_video_information(self, url):
+    def _populate_video_information(self, url: str):
         self.logger.info(f"Downloading video from {url}")
         yt = YouTube(url)
         return VideoInformation(
             video_id=yt.video_id,
             title=yt.title,
-            length=yt.length,
-            views=yt.views,
-            rating=yt.rating,
+            author=yt.author,
             description=yt.description,
+            thumbnail_url=yt.thumbnail_url,
+            duration_in_seconds=yt.length,
+            keywords=yt.keywords,
             source_url=url,
         )
 
-    def _is_existing_video(self, video_information):
+    def _is_existing_video(self, video_information: VideoInformation):
         self.logger.info(f"Is this new? {video_information}")
         return self.storage_table.query(
             KeyConditionExpression=Key("EpisodeId").eq(video_information.video_id)
         )["Items"]
 
-    def _download_to_tmp(self, video_information):
+    def _download_audio_stream(self, video_information: VideoInformation) -> str:
         return (
             YouTube(video_information.source_url)
             .streams.filter(only_audio=True)
@@ -242,30 +261,54 @@ class Downloader:
             .download(output_path="/tmp", filename=f"{video_information.video_id}.mp4")
         )
 
-    def _upload_to_s3(self, local_file_path, video_information):
-        file_name = os.path.basename(local_file_path)
-        bucket_path = f"audio/default/{file_name}"
-        self.storage_bucket.upload_file(local_file_path, bucket_path)
-        file_size = Path(local_file_path).stat().st_size
+    def _download_thumbnail(self, video_information: VideoInformation) -> str:
+        url_without_query_string = video_information.thumbnail_url.split("?")[0]
+        _, file_extension = os.path.splitext(url_without_query_string)
+        return request.urlretrieve(
+            url=video_information.thumbnail_url,
+            filename=f"/tmp/{video_information.video_id}_logo{file_extension}",
+        )[0]
+
+    def _upload_to_s3(self, audio_file_path: str, thumbnail_file_path: str):
+        audio_bucket_path = f"audio/default/{os.path.basename(audio_file_path)}"
+        audio_file_size = Path(audio_file_path).stat().st_size
+        self.storage_bucket.upload_file(audio_file_path, audio_bucket_path)
+
+        thumbnail_bucket_path = f"audio/default/{os.path.basename(thumbnail_file_path)}"
+        self.storage_bucket.upload_file(thumbnail_file_path, thumbnail_bucket_path)
+
+        now = datetime.utcnow()
         return UploadInformation(
-            bucket_path=bucket_path,
-            timestamp_utc=int(datetime.utcnow().timestamp()),
-            file_size=file_size,
+            path_to_episode=audio_bucket_path,
+            path_to_thumbnail=thumbnail_bucket_path,
+            timestamp_utc=int(now.timestamp()),
+            timestamp_rfc822=email.utils.format_datetime(now),
+            episode_size=audio_file_size,
         )
 
-    def _store_metadata(self, download_information, video_information):
-        metadata = dict(
+    def _create_cleansed_metadata(
+        self,
+        upload_information: UploadInformation,
+        video_information: VideoInformation,
+    ) -> dict:
+        return dict(
             [
                 ("CastId", "default"),
                 ("EpisodeId", video_information.video_id),
                 ("Title", video_information.title),
-                ("Views", video_information.views),
-                ("Rating", str(video_information.rating)),
+                ("Author", video_information.author),
                 ("Description", video_information.description),
-                ("BucketPath", download_information.bucket_path),
-                ("TimestampUtc", str(download_information.timestamp_utc)),
+                ("DurationInSeconds", video_information.duration_in_seconds),
+                ("Keywords", video_information.keywords[:250]),
+                ("FileLengthInByte", upload_information.episode_size),
+                ("BucketPathEpisode", upload_information.path_to_episode),
+                ("BucketPathThumbnail", upload_information.path_to_thumbnail),
+                ("TimestampUtc", str(upload_information.timestamp_utc)),
+                ("TimestampRfc822", upload_information.timestamp_rfc822),
             ]
         )
+
+    def _store_metadata(self, metadata: dict):
         self.storage_table.put_item(Item=metadata)
         logger.info(f"Storing metadata: {metadata}")
 
@@ -277,21 +320,28 @@ class Downloader:
             video_information = self._populate_video_information(url)
             if not self._is_existing_video(video_information):
                 start_time = time.time()
-                local_file_path = self._download_to_tmp(video_information)
+                audio_file_path = self._download_audio_stream(video_information)
+                thumbnail_file_path = self._download_thumbnail(video_information)
                 upload_information = self._upload_to_s3(
-                    local_file_path, video_information
+                    audio_file_path=audio_file_path,
+                    thumbnail_file_path=thumbnail_file_path,
                 )
-                self._store_metadata(upload_information, video_information)
+                metadata = self._create_cleansed_metadata(
+                    upload_information, video_information
+                )
+                self._store_metadata(metadata)
                 total_time = int(time.time() - start_time)
                 self.telegram.send(
                     f"""...Download finished, database updated:
-                    \n<pre> Title: {video_information.title}\n Length: {timedelta(seconds=video_information.length)}\n File Size: {upload_information.file_size >> 20}MB\n Time to Download: {total_time}s</pre>
-                    """
+                    \n<pre> Title: {video_information.title}\n Length: {timedelta(seconds=video_information.duration_in_seconds)}\n File Size: {upload_information.episode_size >> 20}MB\n Time to Download: {total_time}s</pre>
+                    """,
+                    disable_notification=True,
                 )
                 status = STATUS_SUCCESS
             else:
                 self.telegram.send(
-                    f"...'{video_information.title}' is already in your cast. Skipping download."
+                    f"...'{video_information.title}' is already in your cast. Skipping download.",
+                    disable_notification=True,
                 )
                 status = STATUS_NO_ACTION
         except Exception as e:
@@ -335,9 +385,10 @@ class Podcaster:
         output = template.render(
             dict(
                 podcast=dict(
-                    last_build_date=utils.format_datetime(datetime.now()),
+                    last_build_date=email.utils.format_datetime(datetime.now()),
                     base_url=self.base_url,
                     feed_url=f"{self.base_url}/{self.FEED_NAME}",
+                    title="Sauerpod Cast",
                     episodes=metadata,
                 )
             )
@@ -348,7 +399,11 @@ class Podcaster:
         with tempfile.NamedTemporaryFile(mode="w") as tmp_file:
             tmp_file.write(rss_feed)
             tmp_file.flush()
-            self.storage_bucket.upload_file(Filename=tmp_file.name, Key=self.FEED_NAME)
+            self.storage_bucket.upload_file(
+                Filename=tmp_file.name,
+                Key=self.FEED_NAME,
+                ExtraArgs={"ContentType": "application/rss+xml"},
+            )
 
     def handle_event(self, payload):
         try:
@@ -359,7 +414,8 @@ class Podcaster:
             self.telegram.send(
                 f"""...Podcast feed generated and uploaded:
                 \n <a href="{self.feed_url}">🎧 here 🎧</a>
-                """
+                """,
+                disable_notification=True,
             )
             status = STATUS_SUCCESS
         except Exception as e:

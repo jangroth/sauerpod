@@ -1,22 +1,40 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<rss xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd" xmlns:atom="http://www.w3.org/2005/Atom" version="2.0">
+<rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd"  xmlns:content="http://purl.org/rss/1.0/modules/content/"  xmlns:atom="http://www.w3.org/2005/Atom">
     <channel>
         <atom:link href="{{ podcast.feed_url }}" rel="self" type="application/rss+xml"/>
-        <title>Sauerpod Cast</title>
+        <title>{{ podcast.title }}</title>
         <description>Generated with https://github.com/jangroth/sauerpod</description>
-        <link>{{ podcast.feed_url }}</link>
+        <link>https://github.com/jangroth/sauerpod</link>
+
+        <image>
+            <url>{{ podcast.base_url }}/logo_1.png</url>
+            <title>{{ podcast.title }}</title>
+            <link>https://github.com/jangroth/sauerpod</link>
+        </image>
 
         <lastBuildDate>{{ podcast.last_build_date }}</lastBuildDate>
         <pubDate>{{ podcast.last_build_date }}</pubDate>
-        <language>en-us</language>
+        <language>en-au</language>
+
+        <itunes:explicit>no</itunes:explicit>
 
         {% for episode in podcast.episodes %}
             <item>
                 <title>{{ episode.Title|e }}</title>
+                <link>{{ podcast.base_url~"/"~episode.BucketPathEpisode }}</link>
                 <description>{{ episode.Description|e }}</description>
-                <link>{{ podcast.base_url~"/"~episode.BucketPath }}</link>
-                <enclosure url="{{ podcast.base_url~"/"~episode.BucketPath }}" type="audio/mpeg" length="1024"></enclosure>
-                <guid>{{ podcast.base_url~"/"~episode.BucketPath }}</guid>
+
+                <pubDate>{{ episode.TimestampRfc822|e }}</pubDate>
+                <enclosure url="{{ podcast.base_url~"/"~episode.BucketPathEpisode }}" type="audio/mpeg" length="{{ episode.DurationInSeconds }}"/>
+
+                <guid>{{ podcast.base_url~"/"~episode.BucketPathEpisode }}</guid>
+
+                <itunes:duration>{{ episode.DurationInSeconds }}</itunes:duration>
+                <itunes:summary>{{ episode.Description|e }}</itunes:summary>
+                <itunes:image href="{{ podcast.base_url~"/"~episode.BucketPathThumbnail }}"/>
+                <itunes:keywords>{{ episode.Keywords|e }}</itunes:keywords>
+                <itunes:author>{{ episode.Author|e }}</itunes:author>
+                <itunes:explicit>no</itunes:explicit>
             </item>
         {% endfor %}
     </channel>

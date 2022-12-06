@@ -2,7 +2,7 @@
 # SauerPod (WIP)
 A grumpy telegram bot that downloads videos to S3 and publishes them as an audio podcast.
 
-![SauerPod](.media/sauerpod.drawio.png)
+![SauerPod](resources/media/sauerpod.drawio.png)
 
 ## Development setup (WIP)
 ### Intial setup
