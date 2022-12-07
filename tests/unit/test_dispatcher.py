@@ -2,7 +2,7 @@ import json
 from unittest.mock import MagicMock
 
 import pytest
-from sauer import STATUS_DOWNLOADER, STATUS_UNKNOWN_MESSAGE, Dispatcher
+from sauer import Dispatcher, Status
 
 BASE_PAYLOAD = """
 {
@@ -16,12 +16,20 @@ BASE_PAYLOAD = """
 PAYLOAD_VIDEO_URL_1 = "https://youtu.be/123456"
 PAYLOAD_VIDEO_URL_2 = "https://www.youtube.com/watch?v=0CmtDk-joT4"
 PAYLOAD_FREE_TEXT = "hello"
+PAYLOAD_COMMAND_1 = "/help"
 
 
 @pytest.fixture
 def url_message():
     payload = json.loads(BASE_PAYLOAD)
     payload["message"]["incoming_text"] = PAYLOAD_VIDEO_URL_1
+    return payload
+
+
+@pytest.fixture
+def command_message():
+    payload = json.loads(BASE_PAYLOAD)
+    payload["message"]["incoming_text"] = PAYLOAD_COMMAND_1
     return payload
 
 
@@ -44,19 +52,19 @@ def dispatcher():
 def test_should_dispatch_url_message(url_message, dispatcher):
     result = dispatcher.handle_event(url_message)
 
-    assert result["status"] == STATUS_DOWNLOADER
-    dispatcher._send_telegram.assert_called_once_with(
-        url_message["message"], "...A video. I got this."
-    )
+    assert result["status"] == Status.DOWNLOADER.name
+
+
+def test_should_dispatch_command_message(command_message, dispatcher):
+    result = dispatcher.handle_event(command_message)
+
+    assert result["status"] == Status.COMMANDER.name
 
 
 def test_should_process_unknown_message(unknown_message, dispatcher):
     result = dispatcher.handle_event(unknown_message)
 
-    assert result["status"] == STATUS_UNKNOWN_MESSAGE
-    dispatcher._send_telegram.assert_called_once_with(
-        unknown_message["message"], "...I'm not sure what to do with that."
-    )
+    assert result["status"] == Status.UNKNOWN_MESSAGE.name
 
 
 def test_should_recognize_different_video_urls(dispatcher):

@@ -1,6 +1,10 @@
-from aws_cdk import CfnOutput, RemovalPolicy, Stack
-from aws_cdk import aws_dynamodb as _ddb
-from aws_cdk import aws_s3 as _s3
+from aws_cdk import (
+    CfnOutput,
+    RemovalPolicy,
+    Stack,
+    aws_dynamodb as _ddb,
+    aws_s3 as _s3,
+)
 from constructs import Construct
 
 

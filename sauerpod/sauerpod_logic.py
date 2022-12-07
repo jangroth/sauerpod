@@ -1,14 +1,17 @@
-from aws_cdk import BundlingOptions, CfnOutput, Duration, Stack
-from aws_cdk import aws_apigateway as _aws_apigateway
-from aws_cdk import aws_dynamodb as _ddb
-from aws_cdk import aws_iam as _iam
-from aws_cdk import aws_lambda as _lambda
-from aws_cdk import aws_logs as _logs
-from aws_cdk import aws_s3 as _s3
-from aws_cdk import aws_stepfunctions as _sfn
-from aws_cdk import aws_stepfunctions_tasks as _tasks
-from aws_cdk import aws_cloudfront as _cloudfront
+from aws_cdk import (
+    CfnOutput,
+    Duration,
+    Stack,
+    aws_dynamodb as _ddb,
+    aws_apigateway as _aws_apigateway,
+    aws_logs as _logs,
+    aws_s3 as _s3,
+    aws_stepfunctions as _sfn,
+    aws_stepfunctions_tasks as _tasks,
+    aws_cloudfront as _cloudfront,
+)
 from constructs import Construct
+from sauerpod.patterns.easy_lambda import EasyLambda
 
 
 class SauerpodLogicStack(Stack):
@@ -24,146 +27,142 @@ class SauerpodLogicStack(Stack):
         super().__init__(scope, construct_id, **kwargs)
 
         #
-        # dispatcher lambda
+        # stepfunction lambdas
         #
 
-        dispatcher_lambda = _lambda.Function(
+        dispatcher_lambda = EasyLambda(
             self,
-            "DispatcherLambda",
-            runtime=_lambda.Runtime.PYTHON_3_9,
-            code=_lambda.Code.from_asset(
-                "src",
-                bundling=BundlingOptions(
-                    image=_lambda.Runtime.PYTHON_3_9.bundling_image,
-                    command=[
-                        "bash",
-                        "-c",
-                        "pip install --no-cache -r requirements.txt -t /asset-output && cp -au . /asset-output",
-                    ],
-                ),
-            ),
+            construct_id="Dispatcher",
+            name="DispatcherLambda",
             handler="sauer.dispatcher_handler",
-            reserved_concurrent_executions=5,
             environment={"LOGGING": "DEBUG"},
-        )
-        dispatcher_role = dispatcher_lambda.role
-        dispatcher_role.add_managed_policy(
-            _iam.ManagedPolicy.from_aws_managed_policy_name("AmazonSSMReadOnlyAccess")
+            managed_policies=["AmazonSSMReadOnlyAccess"],
         )
 
-        #
-        # downloader lambda
-        #
-
-        downloader_lambda = _lambda.Function(
+        downloader_lambda = EasyLambda(
             self,
-            "DownloaderLambda",
-            runtime=_lambda.Runtime.PYTHON_3_9,
-            code=_lambda.Code.from_asset(
-                "src",
-                bundling=BundlingOptions(
-                    image=_lambda.Runtime.PYTHON_3_9.bundling_image,
-                    command=[
-                        "bash",
-                        "-c",
-                        "pip install --no-cache -r requirements.txt -t /asset-output && cp -au . /asset-output",
-                    ],
-                ),
-            ),
+            construct_id="Downloader",
+            name="DownloaderLambda",
             handler="sauer.downloader_handler",
-            reserved_concurrent_executions=5,
-            timeout=Duration.minutes(15),
+            timeout_minutes=15,
             environment={
                 "LOGGING": "DEBUG",
                 "STORAGE_BUCKET_NAME": storage_bucket.bucket_name,
                 "STORAGE_TABLE_NAME": storage_table.table_name,
             },
+            managed_policies=["AmazonSSMReadOnlyAccess"],
         )
-        downloader_role = downloader_lambda.role
-        downloader_role.add_managed_policy(
-            _iam.ManagedPolicy.from_aws_managed_policy_name("AmazonSSMReadOnlyAccess")
-        )
-        storage_bucket.grant_read_write(downloader_role)
-        storage_table.grant_read_write_data(downloader_role)
+        storage_bucket.grant_read_write(downloader_lambda.function)
+        storage_table.grant_read_write_data(downloader_lambda.role)
 
-        #
-        # downloader lambda
-        #
-
-        podcaster_lambda = _lambda.Function(
+        commander_lambda = EasyLambda(
             self,
-            "Podcaster_Lambda",
-            runtime=_lambda.Runtime.PYTHON_3_9,
-            code=_lambda.Code.from_asset(
-                "src",
-                bundling=BundlingOptions(
-                    image=_lambda.Runtime.PYTHON_3_9.bundling_image,
-                    command=[
-                        "bash",
-                        "-c",
-                        "pip install --no-cache -r requirements.txt -t /asset-output && cp -au . /asset-output",
-                    ],
-                ),
-            ),
+            construct_id="Commander",
+            name="CommanderLambda",
+            handler="sauer.commander_handler",
+            environment={
+                "LOGGING": "DEBUG",
+                "STORAGE_BUCKET_NAME": storage_bucket.bucket_name,
+                "STORAGE_TABLE_NAME": storage_table.table_name,
+            },
+            managed_policies=["AmazonSSMReadOnlyAccess"],
+        )
+        storage_bucket.grant_read_write(commander_lambda.function)
+        storage_table.grant_read_write_data(commander_lambda.role)
+
+        podcaster_lambda = EasyLambda(
+            self,
+            construct_id="Podcaster",
+            name="PodcasterLambda",
             handler="sauer.podcaster_handler",
-            reserved_concurrent_executions=5,
-            timeout=Duration.minutes(15),
             environment={
                 "LOGGING": "DEBUG",
                 "DISTRIBUTION_DOMAIN_NAME": distribution.domain_name,
                 "STORAGE_BUCKET_NAME": storage_bucket.bucket_name,
                 "STORAGE_TABLE_NAME": storage_table.table_name,
             },
+            managed_policies=["AmazonSSMReadOnlyAccess"],
         )
-        podcaster_role = podcaster_lambda.role
-        podcaster_role.add_managed_policy(
-            _iam.ManagedPolicy.from_aws_managed_policy_name("AmazonSSMReadOnlyAccess")
+        storage_bucket.grant_read_write(podcaster_lambda.role)
+        storage_table.grant_read_data(podcaster_lambda.role)
+
+        finalizer_lambda = EasyLambda(
+            self,
+            construct_id="Finalizer",
+            name="FinalizerLambda",
+            handler="sauer.finalizer_handler",
+            environment={
+                "LOGGING": "DEBUG",
+                "DISTRIBUTION_DOMAIN_NAME": distribution.domain_name,
+                "STORAGE_BUCKET_NAME": storage_bucket.bucket_name,
+                "STORAGE_TABLE_NAME": storage_table.table_name,
+            },
+            managed_policies=["AmazonSSMReadOnlyAccess"],
         )
-        storage_bucket.grant_read_write(podcaster_role)
-        storage_table.grant_read_data(podcaster_role)
 
         #
-        # statemachine components
+        # statemachine wiring
         #
 
         dispatcher_step = _tasks.LambdaInvoke(
             self,
             "DispatcherTask",
-            lambda_function=dispatcher_lambda,
+            lambda_function=dispatcher_lambda.function,
+            output_path="$.Payload",
+        )
+        commander_step = _tasks.LambdaInvoke(
+            self,
+            "CommanderTask",
+            lambda_function=commander_lambda.function,
             output_path="$.Payload",
         )
         downloader_step = _tasks.LambdaInvoke(
             self,
             "DownloaderTask",
-            lambda_function=downloader_lambda,
+            lambda_function=downloader_lambda.function,
             output_path="$.Payload",
         )
         podcaster_step = _tasks.LambdaInvoke(
             self,
             "PodcasterTask",
-            lambda_function=podcaster_lambda,
+            lambda_function=podcaster_lambda.function,
+            output_path="$.Payload",
+        )
+        finalizer_step = _tasks.LambdaInvoke(
+            self,
+            "FinalizerTask",
+            lambda_function=finalizer_lambda.function,
             output_path="$.Payload",
         )
         job_succeeded = _sfn.Succeed(self, "Succeeded", comment="succeeded")
         job_failed = _sfn.Fail(self, "Failed", comment="failed")
 
         # fmt: off
-        choice_podcaster = _sfn.Choice(self, "Podcaster?")\
+        choice_finalizer = _sfn.Choice(self, "Finalizer?")\
             .when(_sfn.Condition.string_equals("$.status", "SUCCESS"), job_succeeded)\
+            .otherwise(job_failed)
+        choice_podcaster = _sfn.Choice(self, "Podcaster?")\
+            .when(_sfn.Condition.string_equals("$.status", "SUCCESS"), finalizer_step)\
             .otherwise(job_failed)
         choice_downloader = _sfn.Choice(self, "Downloading Result?")\
             .when(_sfn.Condition.string_equals("$.status", "SUCCESS"), podcaster_step)\
             .when(_sfn.Condition.string_equals("$.status", "NO_ACTION"), podcaster_step)\
             .otherwise(job_failed)
+        choice_commander = _sfn.Choice(self, "Commander?")\
+            .when(_sfn.Condition.string_equals("$.status", "SUCCESS"), finalizer_step)\
+            .otherwise(job_failed)
         choice_dispatcher = _sfn.Choice(self, "Dispatching Result?")\
-            .when(_sfn.Condition.string_equals("$.status", "FORWARD_TO_DOWNLOADER"), downloader_step)\
+            .when(_sfn.Condition.string_equals("$.status", "DOWNLOADER"), downloader_step)\
+            .when(_sfn.Condition.string_equals("$.status", "COMMANDER"), commander_step)\
             .when(_sfn.Condition.string_equals("$.status", "UNKNOWN_MESSAGE"), job_succeeded)\
             .otherwise(job_failed)
         # fmt: on
 
         dispatcher_step.next(choice_dispatcher)
+        commander_step.next(choice_commander)
         downloader_step.next(choice_downloader)
         podcaster_step.next(choice_podcaster)
+        finalizer_step.next(choice_finalizer)
 
         #
         # state machine
@@ -171,41 +170,25 @@ class SauerpodLogicStack(Stack):
 
         definition = _sfn.Chain.start(dispatcher_step)
         state_machine = _sfn.StateMachine(
-            self, "StateMachine", definition=definition, timeout=Duration.minutes(5)
+            self, "StateMachine", definition=definition, timeout=Duration.minutes(15)
         )
 
         #
         # bouncer lambda
         #
 
-        # see https://stackoverflow.com/questions/58855739/how-to-install-external-modules-in-a-python-lambda-function-created-by-aws-cdk
-        bouncer_lambda = _lambda.Function(
+        bouncer_lambda = EasyLambda(
             self,
-            "BouncerLambda",
-            runtime=_lambda.Runtime.PYTHON_3_9,
-            code=_lambda.Code.from_asset(
-                "src",
-                bundling=BundlingOptions(
-                    image=_lambda.Runtime.PYTHON_3_9.bundling_image,
-                    command=[
-                        "bash",
-                        "-c",
-                        "pip install --no-cache -r requirements.txt -t /asset-output && cp -au . /asset-output",
-                    ],
-                ),
-            ),
+            construct_id="Bouncer",
+            name="BouncerLambda",
             handler="sauer.bouncer_handler",
-            reserved_concurrent_executions=5,
             environment={
                 "LOGGING": "DEBUG",
                 "STATE_MACHINE_ARN": state_machine.state_machine_arn,
             },
+            managed_policies=["AmazonSSMReadOnlyAccess"],
         )
-        bouncer_role = bouncer_lambda.role
-        bouncer_role.add_managed_policy(
-            _iam.ManagedPolicy.from_aws_managed_policy_name("AmazonSSMReadOnlyAccess")
-        )
-        state_machine.grant_start_execution(bouncer_role)
+        state_machine.grant_start_execution(bouncer_lambda.role)
 
         #
         # bouncer API
@@ -226,7 +209,9 @@ class SauerpodLogicStack(Stack):
         )
         sauerpod_resource = sauerpod_api.root.add_resource("sauerpod")
 
-        bouncer_lambda_integration = _aws_apigateway.LambdaIntegration(bouncer_lambda)
+        bouncer_lambda_integration = _aws_apigateway.LambdaIntegration(
+            bouncer_lambda.function
+        )
         sauerpod_resource.add_method("POST", bouncer_lambda_integration)
 
         #

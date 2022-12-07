@@ -1,7 +1,10 @@
-from aws_cdk import CfnOutput, Stack
-from aws_cdk import aws_s3 as _s3
-from aws_cdk import aws_cloudfront as _cloudfront
-from aws_cdk import aws_cloudfront_origins as _origins
+from aws_cdk import (
+    CfnOutput,
+    Stack,
+    aws_s3 as _s3,
+    aws_cloudfront as _cloudfront,
+    aws_cloudfront_origins as _origins,
+)
 from constructs import Construct
 
 

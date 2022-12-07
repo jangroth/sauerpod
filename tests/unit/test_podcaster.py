@@ -2,7 +2,7 @@ import json
 from unittest.mock import MagicMock
 
 import pytest
-from sauer import STATUS_SUCCESS, Podcaster
+from sauer import Status, Podcaster
 
 SOME_METADATA = "some metadata"
 SOME_RSS = "some rss"
@@ -41,7 +41,7 @@ def test_should_generate_feed(base_message, podcaster):
 
     result = podcaster.handle_event(base_message)
 
-    assert result["status"] == STATUS_SUCCESS
+    assert result["status"] == Status.SUCCESS.name
     podcaster._retrieve_metadata.assert_called_once()
     podcaster._generate_rss_feed.assert_called_once_with(SOME_METADATA)
     podcaster._upload_to_s3.assert_called_once_with(SOME_RSS)
