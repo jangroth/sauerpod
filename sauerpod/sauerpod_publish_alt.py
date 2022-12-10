@@ -9,15 +9,26 @@ from aws_cdk import (
 from constructs import Construct
 
 
-class SauerpodPublishStack(Stack):
+class SauerpodPublishStackAlt(Stack):
     def __init__(
         self,
         scope: Construct,
         construct_id: str,
-        storage_bucket: _s3.Bucket,  # <--- (1) bucket object imported from other stack
         **kwargs,
     ) -> None:
         super().__init__(scope, construct_id, **kwargs)
+
+        #
+        # inputs
+        #
+        storage_bucket_name = _ssm.StringParameter.from_string_parameter_attributes(
+            self,
+            "StorageBucketNameSsm",
+            parameter_name="/sauerpod/aws/storage_bucket_name",
+        ).string_value
+        storage_bucket = _s3.Bucket.from_bucket_name(
+            self, "storage_bucket", storage_bucket_name
+        )
 
         #
         # cloudfront distribution
@@ -37,18 +48,20 @@ class SauerpodPublishStack(Stack):
             },
             default_root_object="index.html",
         )
+        oai = _cloudfront.OriginAccessIdentity(self, "cloudfront_oai")
+        storage_bucket.grant_read(oai)
 
         #
         # outputs
         #
         CfnOutput(
             self,
-            "DistributionDomainNameCfn",
+            "DistributionDomainNameAltCfn",
             value=self.distribution.domain_name,
         )
         _ssm.StringParameter(
             self,
-            "DistributionDomainNameSsm",
-            parameter_name="/sauerpod/aws/distribution_domain_name",
+            "DistributionDomainNameAltSsm",
+            parameter_name="/sauerpod/aws/distribution_domain_name_alt",
             string_value=self.distribution.domain_name,
         )

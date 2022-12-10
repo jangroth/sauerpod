@@ -5,22 +5,18 @@ import aws_cdk as cdk
 from sauerpod.sauerpod_storage import SauerpodStorageStack
 from sauerpod.sauerpod_logic import SauerpodLogicStack
 from sauerpod.sauerpod_publish import SauerpodPublishStack
+from sauerpod.sauerpod_publish_alt import SauerpodPublishStackAlt
 
 app = cdk.App()
 
-storage_stack = SauerpodStorageStack(app, "sauerpod-storage-stack")
-publish_stack = SauerpodPublishStack(
+sss = SauerpodStorageStack(
     app,
-    "sauerpod-publish-stack",
-    storage_bucket=storage_stack.storage_bucket,
+    "sauerpod-storage-stack",
 )
-
+SauerpodPublishStack(app, "sauerpod-publish-stack", sss.storage_bucket)
 SauerpodLogicStack(
     app,
     "sauerpod-logic-stack",
-    storage_bucket=storage_stack.storage_bucket,
-    storage_table=storage_stack.storage_table,
-    distribution=publish_stack.distribution,
 )
-
+SauerpodPublishStackAlt(app, "sauerpod-publish-stack-alt")
 app.synth()

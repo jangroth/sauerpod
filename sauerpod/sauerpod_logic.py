@@ -2,16 +2,17 @@ from aws_cdk import (
     CfnOutput,
     Duration,
     Stack,
+    aws_cloudfront as _cloudfront,
     aws_dynamodb as _ddb,
     aws_apigateway as _aws_apigateway,
     aws_logs as _logs,
     aws_s3 as _s3,
+    aws_ssm as _ssm,
     aws_stepfunctions as _sfn,
     aws_stepfunctions_tasks as _tasks,
-    aws_cloudfront as _cloudfront,
 )
 from constructs import Construct
-from sauerpod.patterns.easy_lambda import EasyLambda
+from sauerpod.patterns.sauer_lambda import SauerLambda
 
 
 class SauerpodLogicStack(Stack):
@@ -19,18 +20,41 @@ class SauerpodLogicStack(Stack):
         self,
         scope: Construct,
         construct_id: str,
-        storage_bucket: _s3,
-        storage_table: _ddb,
-        distribution: _cloudfront,
         **kwargs,
     ) -> None:
         super().__init__(scope, construct_id, **kwargs)
 
         #
+        # inputs
+        #
+        distribution_domain_name = (
+            _ssm.StringParameter.from_string_parameter_attributes(
+                self,
+                "DistributionDomainNameSsm",
+                parameter_name="/sauerpod/aws/distribution_domain_name",
+            ).string_value
+        )
+        storage_bucket_name = _ssm.StringParameter.from_string_parameter_attributes(
+            self,
+            "StorageBucketNameSsm",
+            parameter_name="/sauerpod/aws/storage_bucket_name",
+        ).string_value
+        storage_bucket = _s3.Bucket.from_bucket_name(
+            self, "storage_bucket", storage_bucket_name
+        )
+        storage_table_name = _ssm.StringParameter.from_string_parameter_attributes(
+            self,
+            "StorageTableNameSsm",
+            parameter_name="/sauerpod/aws/storage_table_name",
+        ).string_value
+        storage_table = _ddb.Table.from_table_name(
+            self, "storage_table", storage_table_name
+        )
+
+        #
         # stepfunction lambdas
         #
-
-        dispatcher_lambda = EasyLambda(
+        dispatcher_lambda = SauerLambda(
             self,
             construct_id="Dispatcher",
             name="DispatcherLambda",
@@ -39,7 +63,7 @@ class SauerpodLogicStack(Stack):
             managed_policies=["AmazonSSMReadOnlyAccess"],
         )
 
-        downloader_lambda = EasyLambda(
+        downloader_lambda = SauerLambda(
             self,
             construct_id="Downloader",
             name="DownloaderLambda",
@@ -47,53 +71,53 @@ class SauerpodLogicStack(Stack):
             timeout_minutes=15,
             environment={
                 "LOGGING": "DEBUG",
-                "STORAGE_BUCKET_NAME": storage_bucket.bucket_name,
-                "STORAGE_TABLE_NAME": storage_table.table_name,
+                "STORAGE_BUCKET_NAME": storage_bucket_name,
+                "STORAGE_TABLE_NAME": storage_table_name,
             },
             managed_policies=["AmazonSSMReadOnlyAccess"],
         )
         storage_bucket.grant_read_write(downloader_lambda.function)
         storage_table.grant_read_write_data(downloader_lambda.role)
 
-        commander_lambda = EasyLambda(
+        commander_lambda = SauerLambda(
             self,
             construct_id="Commander",
             name="CommanderLambda",
             handler="sauer.commander_handler",
             environment={
                 "LOGGING": "DEBUG",
-                "STORAGE_BUCKET_NAME": storage_bucket.bucket_name,
-                "STORAGE_TABLE_NAME": storage_table.table_name,
+                "STORAGE_BUCKET_NAME": storage_bucket_name,
+                "STORAGE_TABLE_NAME": storage_table_name,
             },
             managed_policies=["AmazonSSMReadOnlyAccess"],
         )
         storage_bucket.grant_read_write(commander_lambda.function)
         storage_table.grant_read_write_data(commander_lambda.role)
 
-        podcaster_lambda = EasyLambda(
+        podcaster_lambda = SauerLambda(
             self,
             construct_id="Podcaster",
             name="PodcasterLambda",
             handler="sauer.podcaster_handler",
             environment={
                 "LOGGING": "DEBUG",
-                "DISTRIBUTION_DOMAIN_NAME": distribution.domain_name,
-                "STORAGE_BUCKET_NAME": storage_bucket.bucket_name,
-                "STORAGE_TABLE_NAME": storage_table.table_name,
+                "DISTRIBUTION_DOMAIN_NAME": distribution_domain_name,
+                "STORAGE_BUCKET_NAME": storage_bucket_name,
+                "STORAGE_TABLE_NAME": storage_table_name,
             },
             managed_policies=["AmazonSSMReadOnlyAccess"],
         )
         storage_bucket.grant_read_write(podcaster_lambda.role)
         storage_table.grant_read_data(podcaster_lambda.role)
 
-        finalizer_lambda = EasyLambda(
+        finalizer_lambda = SauerLambda(
             self,
             construct_id="Finalizer",
             name="FinalizerLambda",
             handler="sauer.finalizer_handler",
             environment={
                 "LOGGING": "DEBUG",
-                "DISTRIBUTION_DOMAIN_NAME": distribution.domain_name,
+                "DISTRIBUTION_DOMAIN_NAME": distribution_domain_name,
                 "STORAGE_BUCKET_NAME": storage_bucket.bucket_name,
                 "STORAGE_TABLE_NAME": storage_table.table_name,
             },
@@ -103,7 +127,6 @@ class SauerpodLogicStack(Stack):
         #
         # statemachine wiring
         #
-
         dispatcher_step = _tasks.LambdaInvoke(
             self,
             "DispatcherTask",
@@ -167,7 +190,6 @@ class SauerpodLogicStack(Stack):
         #
         # state machine
         #
-
         definition = _sfn.Chain.start(dispatcher_step)
         state_machine = _sfn.StateMachine(
             self, "StateMachine", definition=definition, timeout=Duration.minutes(15)
@@ -176,8 +198,7 @@ class SauerpodLogicStack(Stack):
         #
         # bouncer lambda
         #
-
-        bouncer_lambda = EasyLambda(
+        bouncer_lambda = SauerLambda(
             self,
             construct_id="Bouncer",
             name="BouncerLambda",
@@ -193,7 +214,6 @@ class SauerpodLogicStack(Stack):
         #
         # bouncer API
         #
-
         sauerpod_api_logs = _logs.LogGroup(self, "ApiLogs")
 
         sauerpod_api = _aws_apigateway.RestApi(

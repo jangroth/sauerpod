@@ -1,6 +1,6 @@
 #!/usr/bin/env bash -eu
 
-STORAGE_BUCKET_NAME=$(aws cloudformation describe-stacks --stack-name sauerpod-storage-stack --query "Stacks[0].Outputs[?OutputKey=='StorageBucketName'].OutputValue" --output text)
+STORAGE_BUCKET_NAME=$(aws cloudformation describe-stacks --stack-name sauerpod-storage-stack --query "Stacks[0].Outputs[?OutputKey=='StorageBucketNameCfn'].OutputValue" --output text)
 
 echo "Bucket ${STORAGE_BUCKET_NAME}:"
 

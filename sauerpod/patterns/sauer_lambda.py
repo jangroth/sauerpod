@@ -8,7 +8,7 @@ from constructs import Construct
 from typing import List
 
 
-class EasyLambda(Construct):
+class SauerLambda(Construct):
     def __init__(
         self,
         scope: Construct,

@@ -13,7 +13,7 @@ from urllib import request
 
 import boto3
 import requests
-from boto3.dynamodb.conditions import Key
+from boto3.dynamodb.conditions import Attr, Key
 from pytube import YouTube
 from jinja2 import Environment, select_autoescape, PackageLoader
 
@@ -168,6 +168,7 @@ class Bouncer:
             "message": {
                 "sender": incoming_message["message"]["from"]["first_name"],
                 "incoming_text": incoming_message["message"]["text"],
+                "chat_id": str(incoming_message["message"]["chat"]["id"]),
             }
         }
 
@@ -216,8 +217,10 @@ class Dispatcher:
         )
 
     def _is_video_url(self, text):
-        return text.startswith("https://youtu.be") or text.startswith(
-            "https://www.youtube.com"
+        return (
+            text.startswith("https://youtu.be")
+            or text.startswith("https://www.youtube.com")
+            or text.startswith("https://youtube.com")
         )
 
     def _is_command(self, text):
@@ -254,13 +257,13 @@ class Commander:
         self.storage_table_name = os.environ["STORAGE_TABLE_NAME"]
         self.storage_table = boto3.resource("dynamodb").Table(self.storage_table_name)
 
-    def _cmd_list(self, command):
+    def _cmd_list(self, command, chat_id):
         now = time.time()
         result = ["...I found these entries:"]
         result.extend(
             [
-                f"* <i>{episode['Title']}</i> (<pre>{episode['EpisodeId']}</pre>, <b>-{timedelta(seconds=int(now-int(episode['TimestampUtc'])))}</b>) "
-                for episode in self._retrieve_metadata()
+                self._convert_to_line_item(episode, now)
+                for episode in self._retrieve_metadata(chat_id=chat_id)
             ]
         )
         self.telegram.send(
@@ -280,17 +283,27 @@ class Commander:
             disable_notification=True,
         )
 
-    def _retrieve_metadata(self):
-        items = self.storage_table.scan()["Items"]
-        print(items)
-        return items
+    def _convert_to_line_item(self, episode: dict, now) -> str:
+        title = (
+            (episode["Title"][:25] + "..")
+            if len(episode["Title"]) > 27
+            else episode["Title"]
+        )
+        age = timedelta(seconds=int(now - int(episode["TimestampUtc"])))
+        return f"* <i>{title}</i> (<pre>{episode['EpisodeId']}</pre>, <b>-{age}</b>) "
+
+    def _retrieve_metadata(self, chat_id):
+        return self.storage_table.query(
+            KeyConditionExpression=Key("FeedId").eq(chat_id), ScanIndexForward=False
+        )["Items"]
 
     def handle_event(self, payload: dict):
         try:
             self.logger.info(f"{self.__class__.__name__} - called with {payload}")
             command = payload["message"]["incoming_text"]
+            chat_id = payload["message"]["chat_id"]
             if command.startswith("/list"):
-                self._cmd_list(command)
+                self._cmd_list(command=command, chat_id=chat_id)
             elif command.startswith("/help"):
                 self._cmd_help(command)
             status = Status.SUCCESS
@@ -327,10 +340,11 @@ class Downloader:
             source_url=url,
         )
 
-    def _is_existing_video(self, video_information: VideoInformation):
+    def _is_existing_video(self, video_information: VideoInformation, chat_id: str):
         self.logger.info(f"Is this new? {video_information}")
         return self.storage_table.query(
-            KeyConditionExpression=Key("EpisodeId").eq(video_information.video_id)
+            KeyConditionExpression=Key("FeedId").eq(chat_id),
+            FilterExpression=Attr("EpisodeId").eq(video_information.video_id),
         )["Items"]
 
     def _download_audio_stream(self, video_information: VideoInformation) -> str:
@@ -352,12 +366,16 @@ class Downloader:
             filename=f"/tmp/{video_information.video_id}_logo{file_extension}",
         )[0]
 
-    def _upload_to_s3(self, audio_file_path: str, thumbnail_file_path: str):
-        audio_bucket_path = f"audio/default/{os.path.basename(audio_file_path)}"
+    def _upload_to_s3(
+        self, chat_id: str, audio_file_path: str, thumbnail_file_path: str
+    ):
+        audio_bucket_path = f"audio/{chat_id}/{os.path.basename(audio_file_path)}"
         audio_file_size = Path(audio_file_path).stat().st_size
         self.storage_bucket.upload_file(audio_file_path, audio_bucket_path)
 
-        thumbnail_bucket_path = f"audio/default/{os.path.basename(thumbnail_file_path)}"
+        thumbnail_bucket_path = (
+            f"audio/{chat_id}/{os.path.basename(thumbnail_file_path)}"
+        )
         self.storage_bucket.upload_file(thumbnail_file_path, thumbnail_bucket_path)
 
         now = datetime.utcnow()
@@ -371,12 +389,13 @@ class Downloader:
 
     def _create_cleansed_metadata(
         self,
+        chat_id: str,
         upload_information: UploadInformation,
         video_information: VideoInformation,
     ) -> dict:
         return dict(
             [
-                ("CastId", "default"),
+                ("FeedId", chat_id),
                 ("EpisodeId", video_information.video_id),
                 ("Title", video_information.title),
                 ("Author", video_information.author),
@@ -400,17 +419,21 @@ class Downloader:
             self.logger.info(f"{self.__class__.__name__} - called with {payload}")
             message = payload["message"]
             url = message["incoming_text"]
+            chat_id = message["chat_id"]
             video_information = self._populate_video_information(url)
-            if not self._is_existing_video(video_information):
+            if not self._is_existing_video(video_information, chat_id):
                 start_time = time.time()
                 audio_file_path = self._download_audio_stream(video_information)
                 thumbnail_file_path = self._download_thumbnail(video_information)
                 upload_information = self._upload_to_s3(
+                    chat_id=chat_id,
                     audio_file_path=audio_file_path,
                     thumbnail_file_path=thumbnail_file_path,
                 )
                 metadata = self._create_cleansed_metadata(
-                    upload_information, video_information
+                    chat_id=chat_id,
+                    upload_information=upload_information,
+                    video_information=video_information,
                 )
                 self._store_metadata(metadata)
                 total_time = int(time.time() - start_time)
@@ -437,8 +460,6 @@ class Downloader:
 class Podcaster:
     """Generates podcast feed and uploads to S3"""
 
-    FEED_NAME = "default-feed.rss"
-
     def __init__(self) -> None:
         self.logger = logging.getLogger(self.__class__.__name__)
         self.logger.setLevel(os.environ.get("LOGGING", logging.DEBUG))
@@ -448,24 +469,24 @@ class Podcaster:
         self.storage_table_name = os.environ["STORAGE_TABLE_NAME"]
         self.storage_table = boto3.resource("dynamodb").Table(self.storage_table_name)
         self.base_url = f'https://{os.environ["DISTRIBUTION_DOMAIN_NAME"]}'
-        self.feed_url = f"{self.base_url}/{self.FEED_NAME}"
         self.jinja_env = Environment(
             loader=PackageLoader("sauer"),
             autoescape=select_autoescape(["html", "xml"]),
         )
 
-    def _retrieve_metadata(self):
-        items = self.storage_table.scan()["Items"]
-        return items
+    def _retrieve_metadata(self, chat_id):
+        return self.storage_table.query(
+            KeyConditionExpression=Key("FeedId").eq(chat_id), ScanIndexForward=False
+        )["Items"]
 
-    def _generate_rss_feed(self, metadata):
+    def _generate_rss_feed(self, metadata, feed_name):
         template = self.jinja_env.get_template("podcast.xml.j2")
         output = template.render(
             dict(
                 podcast=dict(
                     last_build_date=email.utils.format_datetime(datetime.now()),
                     base_url=self.base_url,
-                    feed_url=f"{self.base_url}/{self.FEED_NAME}",
+                    feed_url=f"{self.base_url}/{feed_name}",
                     title="Sauerpod Cast",
                     episodes=metadata,
                 )
@@ -473,25 +494,28 @@ class Podcaster:
         )
         return output
 
-    def _upload_to_s3(self, rss_feed):
+    def _upload_to_s3(self, feed_name: str, feed_content: str):
         with tempfile.NamedTemporaryFile(mode="w") as tmp_file:
-            tmp_file.write(rss_feed)
+            tmp_file.write(feed_content)
             tmp_file.flush()
             self.storage_bucket.upload_file(
                 Filename=tmp_file.name,
-                Key=self.FEED_NAME,
+                Key=feed_name,
                 ExtraArgs={"ContentType": "application/rss+xml"},
             )
 
     def handle_event(self, payload):
         try:
             self.logger.info(f"{self.__class__.__name__} - called with {payload}")
-            metadata = self._retrieve_metadata()
-            rss_feed = self._generate_rss_feed(metadata)
-            self._upload_to_s3(rss_feed)
+            chat_id = payload["message"]["chat_id"]
+            metadata = self._retrieve_metadata(chat_id)
+            feed_name = f"{chat_id}.rss"
+            feed_url = f"{self.base_url}/{feed_name}"
+            feed_content = self._generate_rss_feed(metadata, feed_name)
+            self._upload_to_s3(feed_name, feed_content)
             self.telegram.send(
                 f"""...Podcast feed generated and uploaded:
-                \n <a href="{self.feed_url}">🎧 here 🎧</a>
+                \n <a href="{feed_url}">🎧 {feed_url} 🎧</a>
                 """,
                 disable_notification=True,
             )
@@ -554,14 +578,28 @@ if __name__ == "__main__":
     bucket_name = next(
         output["OutputValue"]
         for output in stack_outputs
-        if output["OutputKey"] == "StorageBucketName"
+        if output["OutputKey"] == "StorageBucketNameCfn"
     )
     table_name = next(
         output["OutputValue"]
         for output in stack_outputs
-        if output["OutputKey"] == "StorageTableName"
+        if output["OutputKey"] == "StorageTableNameCfn"
+    )
+    stack_outputs = boto3.client("cloudformation").describe_stacks(
+        StackName="sauerpod-publish-stack"
+    )["Stacks"][0]["Outputs"]
+    domain_name = next(
+        output["OutputValue"]
+        for output in stack_outputs
+        if output["OutputKey"] == "DistributionDomainNameCfn"
     )
     os.environ["STORAGE_TABLE_NAME"] = table_name
     os.environ["STORAGE_BUCKET_NAME"] = bucket_name
-    event = dict(message=dict(incoming_text="/list 12"))
+    os.environ["DISTRIBUTION_DOMAIN_NAME"] = domain_name
+    event = dict(
+        message=dict(
+            incoming_text="/list",
+            chat_id="173229021",
+        )
+    )
     Commander().handle_event(event)

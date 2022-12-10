@@ -15,6 +15,7 @@ BASE_PAYLOAD = """
 
 PAYLOAD_VIDEO_URL_1 = "https://youtu.be/123456"
 PAYLOAD_VIDEO_URL_2 = "https://www.youtube.com/watch?v=0CmtDk-joT4"
+PAYLOAD_VIDEO_URL_3 = "https://youtube.com/shorts/OCJMEmQPvSU?feature=share'"
 PAYLOAD_FREE_TEXT = "hello"
 PAYLOAD_COMMAND_1 = "/help"
 
@@ -70,3 +71,4 @@ def test_should_process_unknown_message(unknown_message, dispatcher):
 def test_should_recognize_different_video_urls(dispatcher):
     assert dispatcher._is_video_url(PAYLOAD_VIDEO_URL_1)
     assert dispatcher._is_video_url(PAYLOAD_VIDEO_URL_2)
+    assert dispatcher._is_video_url(PAYLOAD_VIDEO_URL_3)

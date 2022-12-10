@@ -14,6 +14,7 @@ BASE_PAYLOAD = """
     "message": {
         "incoming_text": "https://youtu.be/123456",
         "sender": "first_name"
+        "chat_id": "123456"
     }
 }
 """
