@@ -12,12 +12,13 @@ from sauer import (
 BASE_PAYLOAD = """
 {
     "message": {
+        "sender_name": "first_name",
         "incoming_text": "https://youtu.be/123456",
-        "sender": "first_name"
         "chat_id": "123456"
     }
 }
 """
+ANY_CHAT_ID = "123123123"
 
 
 @pytest.fixture
@@ -95,7 +96,7 @@ def test_should_cleanse_metadata(downloader, video_information, upload_informati
     video_information = video_information._replace(keywords="x" * 300)
 
     metadata = downloader._create_cleansed_metadata(
-        upload_information, video_information
+        ANY_CHAT_ID, upload_information, video_information
     )
 
     assert len(metadata["Keywords"]) == 250

@@ -49,6 +49,7 @@ UploadInformation = namedtuple(
         "episode_size",
     ],
 )
+Payload = namedtuple("Payload", ["sender_name", "incoming_text", "chat_id"])
 
 
 def notify_cloudwatch(function):
@@ -166,7 +167,7 @@ class Bouncer:
     def _create_payload(self, incoming_message):
         return {
             "message": {
-                "sender": incoming_message["message"]["from"]["first_name"],
+                "sender_name": incoming_message["message"]["from"]["first_name"],
                 "incoming_text": incoming_message["message"]["text"],
                 "chat_id": str(incoming_message["message"]["chat"]["id"]),
             }
@@ -210,9 +211,9 @@ class Dispatcher:
         self.logger.setLevel(os.environ.get("LOGGING", logging.DEBUG))
         self.telegram = TelegramNotifier()
 
-    def _send_telegram(self, message, response_text):
+    def _send_telegram(self, sender_name, incoming_text, response_text):
         self.telegram.send(
-            text=f"Hello {message['sender']}, you said '{message['incoming_text']}'.\n\n{response_text}",
+            text=f"Hello {sender_name}, you said '{incoming_text}'.\n\n{response_text}",
             disable_notification=True,
         )
 
@@ -226,25 +227,32 @@ class Dispatcher:
     def _is_command(self, text):
         return text.startswith("/")
 
-    def handle_event(self, payload):
+    def handle_event(self, event):
         try:
-            self.logger.info(f"{self.__class__.__name__} - called with {payload}")
-            message = payload["message"]
-            incoming_text = message["incoming_text"]
-            if self._is_video_url(incoming_text):
-                self._send_telegram(message, "...A video. 📽️")
+            self.logger.info(f"{self.__class__.__name__} - called with {event}")
+            payload = Payload(**event["message"])
+            if self._is_video_url(payload.incoming_text):
+                self._send_telegram(
+                    payload.sender_name, payload.incoming_text, "...A video. 📽️"
+                )
                 status = Status.DOWNLOADER
-            elif self._is_command(incoming_text):
-                self._send_telegram(message, "...A command. 🫡")
+            elif self._is_command(payload.incoming_text):
+                self._send_telegram(
+                    payload.sender_name, payload.incoming_text, "...A command. 🫡"
+                )
                 status = Status.COMMANDER
             else:
-                self._send_telegram(message, "...I'm not sure what to do with that.")
+                self._send_telegram(
+                    payload.sender_name,
+                    payload.incoming_text,
+                    "...I'm not sure what to do with that.",
+                )
                 status = Status.UNKNOWN_MESSAGE
         except Exception as e:
             logger.exception(e)
             self.telegram.send(f"⚠️ Error: '{str(e)}'")
             status = Status.FAILURE
-        return dict(status=status.name, message=payload["message"])
+        return dict(status=status.name, message=event["message"])
 
 
 class Commander:
@@ -300,10 +308,10 @@ class Commander:
     def handle_event(self, payload: dict):
         try:
             self.logger.info(f"{self.__class__.__name__} - called with {payload}")
-            command = payload["message"]["incoming_text"]
-            chat_id = payload["message"]["chat_id"]
+            payload = Payload(**payload["message"])
+            command = payload.incoming_text
             if command.startswith("/list"):
-                self._cmd_list(command=command, chat_id=chat_id)
+                self._cmd_list(command=command, chat_id=payload.chat_id)
             elif command.startswith("/help"):
                 self._cmd_help(command)
             status = Status.SUCCESS
@@ -414,24 +422,22 @@ class Downloader:
         self.storage_table.put_item(Item=metadata)
         logger.info(f"Storing metadata: {metadata}")
 
-    def handle_event(self, payload):
+    def handle_event(self, event):
         try:
-            self.logger.info(f"{self.__class__.__name__} - called with {payload}")
-            message = payload["message"]
-            url = message["incoming_text"]
-            chat_id = message["chat_id"]
-            video_information = self._populate_video_information(url)
-            if not self._is_existing_video(video_information, chat_id):
+            self.logger.info(f"{self.__class__.__name__} - called with {event}")
+            payload = Payload(**event["message"])
+            video_information = self._populate_video_information(payload.incoming_text)
+            if not self._is_existing_video(video_information, payload.chat_id):
                 start_time = time.time()
                 audio_file_path = self._download_audio_stream(video_information)
                 thumbnail_file_path = self._download_thumbnail(video_information)
                 upload_information = self._upload_to_s3(
-                    chat_id=chat_id,
+                    chat_id=payload.chat_id,
                     audio_file_path=audio_file_path,
                     thumbnail_file_path=thumbnail_file_path,
                 )
                 metadata = self._create_cleansed_metadata(
-                    chat_id=chat_id,
+                    chat_id=payload.chat_id,
                     upload_information=upload_information,
                     video_information=video_information,
                 )
@@ -454,7 +460,7 @@ class Downloader:
             logger.exception(e)
             self.telegram.send(f"⚠️ Error: '{str(e)}'")
             status = Status.FAILURE
-        return dict(status=status.name, message=payload["message"])
+        return dict(status=status.name, message=event["message"])
 
 
 class Podcaster:
@@ -504,12 +510,12 @@ class Podcaster:
                 ExtraArgs={"ContentType": "application/rss+xml"},
             )
 
-    def handle_event(self, payload):
+    def handle_event(self, event):
         try:
-            self.logger.info(f"{self.__class__.__name__} - called with {payload}")
-            chat_id = payload["message"]["chat_id"]
-            metadata = self._retrieve_metadata(chat_id)
-            feed_name = f"{chat_id}.rss"
+            self.logger.info(f"{self.__class__.__name__} - called with {event}")
+            payload = Payload(**event["message"])
+            metadata = self._retrieve_metadata(payload.chat_id)
+            feed_name = f"{payload.chat_id}.rss"
             feed_url = f"{self.base_url}/{feed_name}"
             feed_content = self._generate_rss_feed(metadata, feed_name)
             self._upload_to_s3(feed_name, feed_content)
@@ -524,7 +530,7 @@ class Podcaster:
             logger.exception(e)
             self.telegram.send(f"⚠️ Error:\n{e}'")
             status = Status.FAILURE
-        return dict(status=status.name, message=payload["message"])
+        return dict(status=status.name, message=event["message"])
 
 
 class Finalizer:
@@ -598,8 +604,11 @@ if __name__ == "__main__":
     os.environ["DISTRIBUTION_DOMAIN_NAME"] = domain_name
     event = dict(
         message=dict(
+            sender_name="foo",
             incoming_text="/list",
             chat_id="173229021",
         )
     )
-    Commander().handle_event(event)
+    payload = Payload(**event["message"])
+    print(payload)
+    # Commander().handle_event(event)

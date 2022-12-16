@@ -7,8 +7,9 @@ from sauer import Dispatcher, Status
 BASE_PAYLOAD = """
 {
     "message": {
+        "sender_name": "first_name",
         "incoming_text": "yoman",
-        "sender": "first_name"
+        "chat_id": "123456789"
     }
 }
 """

@@ -2,7 +2,7 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Python: pytest",
+            "name": "Python: Run pytest",
             "type": "python",
             "request": "launch",
             "module": "pytest",
@@ -14,6 +14,13 @@
             "console": "integratedTerminal",
         },
         {
+            "name": "Python: CDK Synth",
+            "type": "python",
+            "request": "launch",
+            "program": "./app.py",
+            "console": "integratedTerminal",
+        },
+        {
             "name": "Python: Run Current File",
             "type": "python",
             "request": "launch",
@@ -22,6 +29,6 @@
             "env": {
                 "PYTHONPATH": "./src"
             }
-        }
+        },
     ]
 }

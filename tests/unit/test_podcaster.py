@@ -9,8 +9,9 @@ SOME_RSS = "some rss"
 BASE_PAYLOAD = """
 {
     "message": {
+        "sender_name": "first_name",
         "incoming_text": "https://youtu.be/123456",
-        "sender": "first_name"
+        "chat_id": "123456"
     }
 }
 """
@@ -30,7 +31,7 @@ def podcaster():
     the_object.storage_bucket = MagicMock()
     the_object.storage_table = MagicMock()
     the_object.jinja_env = MagicMock()
-    the_object.feed_url = "feed url"
+    the_object.base_url = "feed.url"
     return the_object
 
 
@@ -43,5 +44,5 @@ def test_should_generate_feed(base_message, podcaster):
 
     assert result["status"] == Status.SUCCESS.name
     podcaster._retrieve_metadata.assert_called_once()
-    podcaster._generate_rss_feed.assert_called_once_with(SOME_METADATA)
-    podcaster._upload_to_s3.assert_called_once_with(SOME_RSS)
+    podcaster._generate_rss_feed.assert_called_once_with(SOME_METADATA, "123456.rss")
+    podcaster._upload_to_s3.assert_called_once_with("123456.rss", SOME_RSS)
