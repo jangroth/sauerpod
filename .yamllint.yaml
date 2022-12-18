@@ -1,6 +1,9 @@
 ---
 extends: default
 
+ignore: |
+  cdk.out/
+
 rules:
   line-length:
     max: 150

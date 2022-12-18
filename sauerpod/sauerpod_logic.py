@@ -2,7 +2,6 @@ from aws_cdk import (
     CfnOutput,
     Duration,
     Stack,
-    aws_cloudfront as _cloudfront,
     aws_dynamodb as _ddb,
     aws_apigateway as _aws_apigateway,
     aws_logs as _logs,
@@ -86,6 +85,7 @@ class SauerpodLogicStack(Stack):
             handler="sauer.commander_handler",
             environment={
                 "LOGGING": "DEBUG",
+                "DISTRIBUTION_DOMAIN_NAME": distribution_domain_name,
                 "STORAGE_BUCKET_NAME": storage_bucket_name,
                 "STORAGE_TABLE_NAME": storage_table_name,
             },
@@ -109,20 +109,6 @@ class SauerpodLogicStack(Stack):
         )
         storage_bucket.grant_read_write(podcaster_lambda.role)
         storage_table.grant_read_data(podcaster_lambda.role)
-
-        finalizer_lambda = SauerLambda(
-            self,
-            construct_id="Finalizer",
-            name="FinalizerLambda",
-            handler="sauer.finalizer_handler",
-            environment={
-                "LOGGING": "DEBUG",
-                "DISTRIBUTION_DOMAIN_NAME": distribution_domain_name,
-                "STORAGE_BUCKET_NAME": storage_bucket.bucket_name,
-                "STORAGE_TABLE_NAME": storage_table.table_name,
-            },
-            managed_policies=["AmazonSSMReadOnlyAccess"],
-        )
 
         #
         # statemachine wiring
@@ -151,33 +137,25 @@ class SauerpodLogicStack(Stack):
             lambda_function=podcaster_lambda.function,
             output_path="$.Payload",
         )
-        finalizer_step = _tasks.LambdaInvoke(
-            self,
-            "FinalizerTask",
-            lambda_function=finalizer_lambda.function,
-            output_path="$.Payload",
-        )
         job_succeeded = _sfn.Succeed(self, "Succeeded", comment="succeeded")
         job_failed = _sfn.Fail(self, "Failed", comment="failed")
 
         # fmt: off
-        choice_finalizer = _sfn.Choice(self, "Finalizer?")\
-            .when(_sfn.Condition.string_equals("$.status", "SUCCESS"), job_succeeded)\
-            .otherwise(job_failed)
         choice_podcaster = _sfn.Choice(self, "Podcaster?")\
-            .when(_sfn.Condition.string_equals("$.status", "SUCCESS"), finalizer_step)\
+            .when(_sfn.Condition.string_equals("$.status", "FINISH"), job_succeeded)\
             .otherwise(job_failed)
         choice_downloader = _sfn.Choice(self, "Downloading Result?")\
-            .when(_sfn.Condition.string_equals("$.status", "SUCCESS"), podcaster_step)\
-            .when(_sfn.Condition.string_equals("$.status", "NO_ACTION"), podcaster_step)\
+            .when(_sfn.Condition.string_equals("$.status", "PODCASTER"), podcaster_step)\
+            .when(_sfn.Condition.string_equals("$.status", "FINISH"), job_succeeded)\
             .otherwise(job_failed)
         choice_commander = _sfn.Choice(self, "Commander?")\
-            .when(_sfn.Condition.string_equals("$.status", "SUCCESS"), finalizer_step)\
+            .when(_sfn.Condition.string_equals("$.status", "PODCASTER"), podcaster_step)\
+            .when(_sfn.Condition.string_equals("$.status", "FINISH"), job_succeeded)\
             .otherwise(job_failed)
         choice_dispatcher = _sfn.Choice(self, "Dispatching Result?")\
             .when(_sfn.Condition.string_equals("$.status", "DOWNLOADER"), downloader_step)\
             .when(_sfn.Condition.string_equals("$.status", "COMMANDER"), commander_step)\
-            .when(_sfn.Condition.string_equals("$.status", "UNKNOWN_MESSAGE"), job_succeeded)\
+            .when(_sfn.Condition.string_equals("$.status", "FINISH"), job_succeeded)\
             .otherwise(job_failed)
         # fmt: on
 
@@ -185,7 +163,6 @@ class SauerpodLogicStack(Stack):
         commander_step.next(choice_commander)
         downloader_step.next(choice_downloader)
         podcaster_step.next(choice_podcaster)
-        finalizer_step.next(choice_finalizer)
 
         #
         # state machine

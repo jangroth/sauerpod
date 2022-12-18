@@ -70,11 +70,10 @@ class UnknownChatIdException(Exception):
 
 class Status(Enum):
     DOWNLOADER = auto()
+    PODCASTER = auto()
     COMMANDER = auto()
-    UNKNOWN_MESSAGE = auto()
-    SUCCESS = auto()
+    FINISH = auto()
     FAILURE = auto()
-    NO_ACTION = auto()
 
 
 class TelegramNotifier:
@@ -250,7 +249,7 @@ class Dispatcher:
                 status = Status.UNKNOWN_MESSAGE
         except Exception as e:
             logger.exception(e)
-            self.telegram.send(f"⚠️ Error: '{str(e)}'")
+            self.telegram.send(f"⚠️ Error:\n{e}")
             status = Status.FAILURE
         return dict(status=status.name, message=event["message"])
 
@@ -262,20 +261,70 @@ class Commander:
         self.logger = logging.getLogger(self.__class__.__name__)
         self.logger.setLevel(os.environ.get("LOGGING", logging.DEBUG))
         self.telegram = TelegramNotifier()
+        self.storage_bucket_name = os.environ["STORAGE_BUCKET_NAME"]
+        self.storage_bucket = boto3.resource("s3").Bucket(self.storage_bucket_name)
         self.storage_table_name = os.environ["STORAGE_TABLE_NAME"]
         self.storage_table = boto3.resource("dynamodb").Table(self.storage_table_name)
+        self.base_url = f'https://{os.environ["DISTRIBUTION_DOMAIN_NAME"]}'
+
+    def _convert_to_line_item(self, episode: dict, now: float, compact: bool) -> str:
+        title = (
+            (episode["Title"][:25] + "..")
+            if len(episode["Title"]) > 27 and compact
+            else episode["Title"]
+        )
+        age = timedelta(seconds=int(now - int(episode["TimestampUtc"])))
+        episode_link = f"<a href='{self.base_url}/{episode['BucketPathEpisode']}'>{episode['EpisodeId']}</a>"
+        return f"* <i>{title}</i> ({episode_link}, <b>-{age}</b>) "
+
+    def _retrieve_metadata(self, chat_id):
+        return self.storage_table.query(
+            KeyConditionExpression=Key("FeedId").eq(chat_id), ScanIndexForward=False
+        )["Items"]
+
+    def _delete_episode(self, chat_id, episode_id):
+        try:
+            episode = next(
+                episode
+                for episode in self.storage_table.query(
+                    KeyConditionExpression=Key("FeedId").eq(chat_id),
+                    FilterExpression=Key("EpisodeId").eq(episode_id),
+                )["Items"]
+            )
+            self.storage_bucket.delete_objects(
+                Delete={"Objects": [{"Key": episode["BucketPathThumbnail"]}]}
+            )
+            self.storage_bucket.delete_objects(
+                Delete={"Objects": [{"Key": episode["BucketPathEpisode"]}]}
+            )
+            self.storage_table.delete_item(
+                Key={"FeedId": chat_id, "TimestampUtc": episode["TimestampUtc"]},
+                ConditionExpression=Attr("EpisodeId").eq(episode_id),
+            )
+            result = f"Episode {episode_id} deleted."
+        except StopIteration:
+            result = f"Couldn't find episode <pre>{episode_id}</pre> in database. Is this the right id?"
+        return result
 
     def _cmd_list(self, command, chat_id):
         now = time.time()
-        result = ["...I found these entries:"]
-        result.extend(
-            [
-                self._convert_to_line_item(episode, now)
-                for episode in self._retrieve_metadata(chat_id=chat_id)
-            ]
-        )
+        result = [
+            self._convert_to_line_item(episode, now, not command.endswith("full"))
+            for episode in self._retrieve_metadata(chat_id=chat_id)
+        ]
         self.telegram.send(
             "\n".join(result),
+            disable_notification=True,
+        )
+
+    def _cmd_delete(self, command, chat_id):
+        command_fragments = command.split()
+        if len(command_fragments) == :
+            result = self._delete_episode(chat_id, command_fragments[1])
+        else:
+            result = "Please use correct format: '<pre>/delete [id]</pre>'"
+        self.telegram.send(
+            result,
             disable_notification=True,
         )
 
@@ -285,41 +334,33 @@ class Commander:
                 f"""\
                 ...I understand these commands:
                 <pre> {'/help':<20}</pre>This text.
-                <pre> {'/list (n)':<20}</pre>List all (<i>last n</i>) entries in database.
+                <pre> {'/list ':<20}</pre>List entries in database (compact).
+                <pre> {'/listfull ':<20}</pre>List entries in database (full).
+                <pre> {'/delete [id]':<20}</pre>Delete entry from database.
                 """
             ),
             disable_notification=True,
         )
 
-    def _convert_to_line_item(self, episode: dict, now) -> str:
-        title = (
-            (episode["Title"][:25] + "..")
-            if len(episode["Title"]) > 27
-            else episode["Title"]
-        )
-        age = timedelta(seconds=int(now - int(episode["TimestampUtc"])))
-        return f"* <i>{title}</i> (<pre>{episode['EpisodeId']}</pre>, <b>-{age}</b>) "
-
-    def _retrieve_metadata(self, chat_id):
-        return self.storage_table.query(
-            KeyConditionExpression=Key("FeedId").eq(chat_id), ScanIndexForward=False
-        )["Items"]
-
-    def handle_event(self, payload: dict):
+    def handle_event(self, event: dict):
         try:
-            self.logger.info(f"{self.__class__.__name__} - called with {payload}")
-            payload = Payload(**payload["message"])
+            self.logger.info(f"{self.__class__.__name__} - called with {event}")
+            payload = Payload(**event["message"])
             command = payload.incoming_text
             if command.startswith("/list"):
                 self._cmd_list(command=command, chat_id=payload.chat_id)
+                status = Status.FINISH
+            if command.startswith("/delete"):
+                self._cmd_delete(command=command, chat_id=payload.chat_id)
+                status = Status.PODCASTER
             elif command.startswith("/help"):
                 self._cmd_help(command)
-            status = Status.SUCCESS
+                status = Status.FINISH
         except Exception as e:
             logger.exception(e)
-            self.telegram.send(f"⚠️ Error:\n{e}'")
+            self.telegram.send(f"⚠️ Error:\n{e}")
             status = Status.FAILURE
-        return dict(status=status.name, message=payload["message"])
+        return dict(status=status.name, message=event["message"])
 
 
 class Downloader:
@@ -449,16 +490,16 @@ class Downloader:
                     """,
                     disable_notification=True,
                 )
-                status = Status.SUCCESS
+                status = Status.PODCASTER
             else:
                 self.telegram.send(
                     f"...'{video_information.title}' is already in your cast. Skipping download.",
                     disable_notification=True,
                 )
-                status = Status.NO_ACTION
+                status = Status.FINISH
         except Exception as e:
             logger.exception(e)
-            self.telegram.send(f"⚠️ Error: '{str(e)}'")
+            self.telegram.send(f"⚠️ Error:\n{e}")
             status = Status.FAILURE
         return dict(status=status.name, message=event["message"])
 
@@ -525,26 +566,12 @@ class Podcaster:
                 """,
                 disable_notification=True,
             )
-            status = Status.SUCCESS
+            status = Status.FINISH
         except Exception as e:
             logger.exception(e)
-            self.telegram.send(f"⚠️ Error:\n{e}'")
+            self.telegram.send(f"⚠️ Error:\n{e}")
             status = Status.FAILURE
         return dict(status=status.name, message=event["message"])
-
-
-class Finalizer:
-    """Finalize interaction"""
-
-    def handle_event(self, payload):
-        try:
-            self.logger.info(f"{self.__class__.__name__} - called with {payload}")
-            status = Status.SUCCESS
-        except Exception as e:
-            logger.exception(e)
-            self.telegram.send(f"⚠️ Error:\n{e}'")
-            status = Status.FAILURE
-        return dict(status=status.name, message=payload["message"])
 
 
 @notify_cloudwatch
@@ -570,11 +597,6 @@ def downloader_handler(event, context) -> dict:
 @notify_cloudwatch
 def podcaster_handler(event, context) -> dict:
     return Podcaster().handle_event(event)
-
-
-@notify_cloudwatch
-def _handler(event, context) -> dict:
-    return Finalizer().handle_event(event)
 
 
 if __name__ == "__main__":
@@ -605,10 +627,9 @@ if __name__ == "__main__":
     event = dict(
         message=dict(
             sender_name="foo",
-            incoming_text="/list",
+            incoming_text="/delete",
             chat_id="173229021",
         )
     )
     payload = Payload(**event["message"])
-    print(payload)
-    # Commander().handle_event(event)
+    Commander().handle_event(event)

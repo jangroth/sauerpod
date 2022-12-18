@@ -16,6 +16,10 @@ A grumpy Telegram bot that converts video streams into audio tracks and publishe
     * [Amazon CloudFront](https://aws.amazon.com/cloudfront/)
     * [AWS Systems Manager](https://aws.amazon.com/systems-manager/)
 
+### Logic Flow
+
+<img src="resources/media/statemachine.drawio.png" width="400" height="400" />
+
 ## Development setup (WIP)
 ### Intial setup
 Required once to set up the project:
