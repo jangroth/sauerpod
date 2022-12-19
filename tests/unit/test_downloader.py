@@ -70,7 +70,7 @@ def test_should_process_video_if_new(base_message, video_information, downloader
 
     result = downloader.handle_event(base_message)
 
-    assert result["status"] == Status.SUCCESS.name
+    assert result["status"] == Status.PODCASTER.name
     downloader._download_audio_stream.assert_called_once()
     downloader._download_thumbnail.assert_called_once()
     downloader._upload_to_s3.assert_called_once()
@@ -86,7 +86,7 @@ def test_should_ignore_video_if_not_new(base_message, downloader):
 
     result = downloader.handle_event(base_message)
 
-    assert result["status"] == Status.NO_ACTION.name
+    assert result["status"] == Status.FINISH.name
     downloader._download_to_tmp.assert_not_called()
     downloader._upload_to_s3.assert_not_called()
     downloader._store_metadata.assert_not_called()

@@ -66,7 +66,7 @@ def test_should_dispatch_command_message(command_message, dispatcher):
 def test_should_process_unknown_message(unknown_message, dispatcher):
     result = dispatcher.handle_event(unknown_message)
 
-    assert result["status"] == Status.UNKNOWN_MESSAGE.name
+    assert result["status"] == Status.FINISH.name
 
 
 def test_should_recognize_different_video_urls(dispatcher):

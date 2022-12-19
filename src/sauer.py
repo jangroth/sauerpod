@@ -95,7 +95,7 @@ class TelegramNotifier:
         text: str,
         parse_mode="HTML",
         disable_web_page_preview=True,
-        disable_notification=False,
+        disable_notification=True,
     ) -> None:
         self.logger.debug(f"Sending:\n{text}")
         # https://core.telegram.org/bots/api#sendmessage
@@ -213,7 +213,6 @@ class Dispatcher:
     def _send_telegram(self, sender_name, incoming_text, response_text):
         self.telegram.send(
             text=f"Hello {sender_name}, you said '{incoming_text}'.\n\n{response_text}",
-            disable_notification=True,
         )
 
     def _is_video_url(self, text):
@@ -231,22 +230,14 @@ class Dispatcher:
             self.logger.info(f"{self.__class__.__name__} - called with {event}")
             payload = Payload(**event["message"])
             if self._is_video_url(payload.incoming_text):
-                self._send_telegram(
-                    payload.sender_name, payload.incoming_text, "...A video. 📽️"
-                )
                 status = Status.DOWNLOADER
             elif self._is_command(payload.incoming_text):
-                self._send_telegram(
-                    payload.sender_name, payload.incoming_text, "...A command. 🫡"
-                )
                 status = Status.COMMANDER
             else:
-                self._send_telegram(
-                    payload.sender_name,
-                    payload.incoming_text,
-                    "...I'm not sure what to do with that.",
+                self.telegram.send(
+                    text=f"Hello {payload.sender_name}, you said '{payload.incoming_text}'.\n\nI don't know what to do with that.",
                 )
-                status = Status.UNKNOWN_MESSAGE
+                status = Status.FINISH
         except Exception as e:
             logger.exception(e)
             self.telegram.send(f"⚠️ Error:\n{e}")
@@ -277,12 +268,16 @@ class Commander:
         episode_link = f"<a href='{self.base_url}/{episode['BucketPathEpisode']}'>{episode['EpisodeId']}</a>"
         return f"* <i>{title}</i> ({episode_link}, <b>-{age}</b>) "
 
-    def _retrieve_metadata(self, chat_id):
-        return self.storage_table.query(
-            KeyConditionExpression=Key("FeedId").eq(chat_id), ScanIndexForward=False
-        )["Items"]
+    def _query_episodes(self, feed_id: str, ascending: bool, limit: int = None) -> dict:
+        kwargs = {
+            "KeyConditionExpression": Key("FeedId").eq(feed_id),
+            "ScanIndexForward": ascending,
+        }
+        if limit:
+            kwargs["Limit"] = limit
+        return self.storage_table.query(**kwargs)["Items"]
 
-    def _delete_episode(self, chat_id, episode_id):
+    def _delete_episode(self, chat_id, episode_id) -> str:
         try:
             episode = next(
                 episode
@@ -306,40 +301,51 @@ class Commander:
             result = f"Couldn't find episode <pre>{episode_id}</pre> in database. Is this the right id?"
         return result
 
-    def _cmd_list(self, command, chat_id):
+    def _cmd_list(self, command, chat_id) -> None:
         now = time.time()
         result = [
             self._convert_to_line_item(episode, now, not command.endswith("full"))
-            for episode in self._retrieve_metadata(chat_id=chat_id)
+            for episode in self._query_episodes(feed_id=chat_id, ascending=False)
         ]
-        self.telegram.send(
-            "\n".join(result),
-            disable_notification=True,
-        )
+        self.telegram.send("\n".join(result))
 
-    def _cmd_delete(self, command, chat_id):
-        command_fragments = command.split()
-        if len(command_fragments) == :
-            result = self._delete_episode(chat_id, command_fragments[1])
-        else:
-            result = "Please use correct format: '<pre>/delete [id]</pre>'"
-        self.telegram.send(
-            result,
-            disable_notification=True,
-        )
+    def _cmd_delete(self, command, chat_id) -> bool:
+        try:
+            command_fragments = command.split()
+            command_text = command_fragments[0]
+            if command_text == "/deletenewest":
+                episode_id = self._query_episodes(feed_id=chat_id, ascending=False)[0][
+                    "EpisodeId"
+                ]
+            elif command_text == "/deleteoldest":
+                episode_id = self._query_episodes(feed_id=chat_id, ascending=True)[0][
+                    "EpisodeId"
+                ]
+            elif len(command_fragments) == 2:
+                episode_id = command_fragments[1]
+            else:
+                raise ValueError()
+            message = self._delete_episode(chat_id=chat_id, episode_id=episode_id)
+            update_required = True
+        except ValueError:
+            message = f"I don't understand '{command}'."
+            update_required = False
+        self.telegram.send(message)
+        return update_required
 
-    def _cmd_help(self, command):
+    def _cmd_help(self):
         self.telegram.send(
             textwrap.dedent(
                 f"""\
-                ...I understand these commands:
+                I understand these commands:
                 <pre> {'/help':<20}</pre>This text.
-                <pre> {'/list ':<20}</pre>List entries in database (compact).
-                <pre> {'/listfull ':<20}</pre>List entries in database (full).
+                <pre> {'/list':<20}</pre>List entries in database (compact layout).
+                <pre> {'/listfull':<20}</pre>List entries in database (full layout).
                 <pre> {'/delete [id]':<20}</pre>Delete entry from database.
+                <pre> {'/deletenewest':<20}</pre>Delete newest entry from database.
+                <pre> {'/deleteoldest':<20}</pre>Delete oldest entry from database.
                 """
             ),
-            disable_notification=True,
         )
 
     def handle_event(self, event: dict):
@@ -351,10 +357,12 @@ class Commander:
                 self._cmd_list(command=command, chat_id=payload.chat_id)
                 status = Status.FINISH
             if command.startswith("/delete"):
-                self._cmd_delete(command=command, chat_id=payload.chat_id)
-                status = Status.PODCASTER
+                update_required = self._cmd_delete(
+                    command=command, chat_id=payload.chat_id
+                )
+                status = Status.PODCASTER if update_required else Status.FINISH
             elif command.startswith("/help"):
-                self._cmd_help(command)
+                self._cmd_help()
                 status = Status.FINISH
         except Exception as e:
             logger.exception(e)
@@ -469,7 +477,7 @@ class Downloader:
             payload = Payload(**event["message"])
             video_information = self._populate_video_information(payload.incoming_text)
             if not self._is_existing_video(video_information, payload.chat_id):
-                start_time = time.time()
+                self.telegram.send("...Downloading video.")
                 audio_file_path = self._download_audio_stream(video_information)
                 thumbnail_file_path = self._download_thumbnail(video_information)
                 upload_information = self._upload_to_s3(
@@ -483,18 +491,10 @@ class Downloader:
                     video_information=video_information,
                 )
                 self._store_metadata(metadata)
-                total_time = int(time.time() - start_time)
-                self.telegram.send(
-                    f"""...Download finished, database updated:
-                    \n<pre> Title: {video_information.title}\n Length: {timedelta(seconds=video_information.duration_in_seconds)}\n File Size: {upload_information.episode_size >> 20}MB\n Time to Download: {total_time}s</pre>
-                    """,
-                    disable_notification=True,
-                )
                 status = Status.PODCASTER
             else:
                 self.telegram.send(
                     f"...'{video_information.title}' is already in your cast. Skipping download.",
-                    disable_notification=True,
                 )
                 status = Status.FINISH
         except Exception as e:
@@ -564,7 +564,6 @@ class Podcaster:
                 f"""...Podcast feed generated and uploaded:
                 \n <a href="{feed_url}">🎧 {feed_url} 🎧</a>
                 """,
-                disable_notification=True,
             )
             status = Status.FINISH
         except Exception as e:
@@ -627,7 +626,7 @@ if __name__ == "__main__":
     event = dict(
         message=dict(
             sender_name="foo",
-            incoming_text="/delete",
+            incoming_text="/deletefirst",
             chat_id="173229021",
         )
     )
