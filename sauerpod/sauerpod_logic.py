@@ -1,9 +1,12 @@
 from aws_cdk import (
     CfnOutput,
     Duration,
+    RemovalPolicy,
     Stack,
     aws_dynamodb as _ddb,
     aws_apigateway as _aws_apigateway,
+    aws_lambda as _lambda,
+    aws_lambda_python_alpha as _lambda_python,
     aws_logs as _logs,
     aws_s3 as _s3,
     aws_ssm as _ssm,
@@ -51,22 +54,34 @@ class SauerpodLogicStack(Stack):
         )
 
         #
+        # common
+        #
+        common_layer = _lambda_python.PythonLayerVersion(
+            self,
+            "CommonLayer",
+            entry="src/commonlayer",
+            compatible_runtimes=[_lambda.Runtime.PYTHON_3_9],
+            removal_policy=RemovalPolicy.DESTROY,
+        )
+
+        #
         # stepfunction lambdas
         #
         dispatcher_lambda = SauerLambda(
             self,
-            construct_id="Dispatcher",
-            name="DispatcherLambda",
-            handler="sauer.dispatcher_handler",
+            construct_id="DispatcherLambda",
+            code_path="src/dispatcher",
+            handler="dispatcher.dispatcher_handler",
             environment={"LOGGING": "DEBUG"},
             managed_policies=["AmazonSSMReadOnlyAccess"],
+            layers=[common_layer],
         )
 
         downloader_lambda = SauerLambda(
             self,
             construct_id="Downloader",
-            name="DownloaderLambda",
-            handler="sauer.downloader_handler",
+            code_path="src/downloader",
+            handler="downloader.downloader_handler",
             timeout_minutes=15,
             environment={
                 "LOGGING": "DEBUG",
@@ -74,6 +89,7 @@ class SauerpodLogicStack(Stack):
                 "STORAGE_TABLE_NAME": storage_table_name,
             },
             managed_policies=["AmazonSSMReadOnlyAccess"],
+            layers=[common_layer],
         )
         storage_bucket.grant_read_write(downloader_lambda.function)
         storage_table.grant_read_write_data(downloader_lambda.role)
@@ -81,8 +97,8 @@ class SauerpodLogicStack(Stack):
         commander_lambda = SauerLambda(
             self,
             construct_id="Commander",
-            name="CommanderLambda",
-            handler="sauer.commander_handler",
+            code_path="src/commander",
+            handler="commander.commander_handler",
             environment={
                 "LOGGING": "DEBUG",
                 "DISTRIBUTION_DOMAIN_NAME": distribution_domain_name,
@@ -90,6 +106,7 @@ class SauerpodLogicStack(Stack):
                 "STORAGE_TABLE_NAME": storage_table_name,
             },
             managed_policies=["AmazonSSMReadOnlyAccess"],
+            layers=[common_layer],
         )
         storage_bucket.grant_read_write(commander_lambda.function)
         storage_table.grant_read_write_data(commander_lambda.role)
@@ -97,8 +114,8 @@ class SauerpodLogicStack(Stack):
         podcaster_lambda = SauerLambda(
             self,
             construct_id="Podcaster",
-            name="PodcasterLambda",
-            handler="sauer.podcaster_handler",
+            code_path="src/podcaster",
+            handler="podcaster.podcaster_handler",
             environment={
                 "LOGGING": "DEBUG",
                 "DISTRIBUTION_DOMAIN_NAME": distribution_domain_name,
@@ -106,6 +123,7 @@ class SauerpodLogicStack(Stack):
                 "STORAGE_TABLE_NAME": storage_table_name,
             },
             managed_policies=["AmazonSSMReadOnlyAccess"],
+            layers=[common_layer],
         )
         storage_bucket.grant_read_write(podcaster_lambda.role)
         storage_table.grant_read_data(podcaster_lambda.role)
@@ -178,13 +196,14 @@ class SauerpodLogicStack(Stack):
         bouncer_lambda = SauerLambda(
             self,
             construct_id="Bouncer",
-            name="BouncerLambda",
-            handler="sauer.bouncer_handler",
+            code_path="src/bouncer",
+            handler="bouncer.bouncer_handler",
             environment={
                 "LOGGING": "DEBUG",
                 "STATE_MACHINE_ARN": state_machine.state_machine_arn,
             },
             managed_policies=["AmazonSSMReadOnlyAccess"],
+            layers=[common_layer],
         )
         state_machine.grant_start_execution(bouncer_lambda.role)
 

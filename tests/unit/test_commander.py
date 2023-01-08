@@ -3,10 +3,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from sauer import (
-    Status,
-    Commander,
-)
+from commander.commander import Commander
+from commonlayer.common import Status
 
 BASE_PAYLOAD = """
 {

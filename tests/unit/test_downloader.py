@@ -2,9 +2,9 @@ import json
 from unittest.mock import MagicMock
 
 import pytest
-from sauer import (
+from downloader.downloader import Downloader
+from commonlayer.common import (
     Status,
-    Downloader,
     UploadInformation,
     VideoInformation,
 )

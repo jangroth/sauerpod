@@ -2,7 +2,8 @@ import json
 from unittest.mock import MagicMock
 
 import pytest
-from sauer import Dispatcher, Status
+from dispatcher.dispatcher import Dispatcher
+from commonlayer.common import Status
 
 BASE_PAYLOAD = """
 {

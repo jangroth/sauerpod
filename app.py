@@ -10,13 +10,24 @@ from sauerpod.sauerpod_publish_alt import SauerpodPublishStackAlt
 app = cdk.App()
 
 sss = SauerpodStorageStack(
-    app,
-    "sauerpod-storage-stack",
+    scope=app,
+    construct_id="sauerpod-storage-stack",
+    description="github.com/jangroth/sauerpod - storage bucket and ddb table",
 )
-SauerpodPublishStack(app, "sauerpod-publish-stack", sss.storage_bucket)
-SauerpodLogicStack(
-    app,
-    "sauerpod-logic-stack",
+sps = SauerpodPublishStack(
+    scope=app,
+    construct_id="sauerpod-publish-stack",
+    storage_bucket=sss.storage_bucket,
+    description="github.com/jangroth/sauerpod - cloudfront distribution",
 )
-SauerpodPublishStackAlt(app, "sauerpod-publish-stack-alt")
+sps.add_dependency(sss)
+sls = SauerpodLogicStack(
+    scope=app,
+    construct_id="sauerpod-logic-stack",
+    description="github.com/jangroth/sauerpod - state machine with core logic",
+)
+sls.add_dependency(sps)
+slss = SauerpodPublishStackAlt(app, "sauerpod-publish-stack-alt")
+slss.add_dependency(sps)
+
 app.synth()

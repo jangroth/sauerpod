@@ -1,5 +1,4 @@
 from aws_cdk import (
-    BundlingOptions,
     Duration,
     aws_iam as _iam,
     aws_lambda as _lambda,
@@ -13,34 +12,25 @@ class SauerLambda(Construct):
         self,
         scope: Construct,
         construct_id: str,
-        *,
-        name: str,
+        code_path: str,
         handler: str,
         environment: dict,
         managed_policies: List[str],
+        layers=None,
         timeout_minutes: int = 1,
     ) -> None:
         super().__init__(scope, construct_id)
 
         self.function = _lambda.Function(
             self,
-            name,
+            id=construct_id,
             runtime=_lambda.Runtime.PYTHON_3_9,
-            code=_lambda.Code.from_asset(
-                "src",
-                bundling=BundlingOptions(
-                    image=_lambda.Runtime.PYTHON_3_9.bundling_image,
-                    command=[
-                        "bash",
-                        "-c",
-                        "pip install --no-cache -r requirements.txt -t /asset-output && cp -au . /asset-output",
-                    ],
-                ),
-            ),
+            code=_lambda.Code.from_asset(code_path),
             handler=handler,
             reserved_concurrent_executions=5,
             timeout=Duration.minutes(timeout_minutes),
             environment=environment,
+            layers=layers,
         )
         self.role = self.function.role
         [

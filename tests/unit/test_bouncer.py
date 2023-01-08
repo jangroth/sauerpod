@@ -2,7 +2,7 @@ import json
 from unittest.mock import MagicMock
 
 import pytest
-from sauer import Bouncer
+from bouncer.bouncer import Bouncer
 
 BASE_EVENT = """
 {

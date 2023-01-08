@@ -2,7 +2,8 @@ import json
 from unittest.mock import MagicMock
 
 import pytest
-from sauer import Status, Podcaster
+from podcaster.podcaster import Podcaster
+from commonlayer.common import Status
 
 ANY_METADATA = "some metadata"
 ANY_RSS = "some rss"

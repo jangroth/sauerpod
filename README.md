@@ -1,6 +1,6 @@
 [![build](https://github.com/jangroth/sauerpod/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/jangroth/sauerpod/actions/workflows/ci.yml)
 # Sauerpod
-A grumpy Telegram bot that converts video streams into audio tracks and publishes those as an individual podcast feed. Implemented in Python using AWS cloud-native services. No servers required.
+A sauer (🇩🇪 for 'grumpy') Telegram bot that converts video streams into audio tracks and publishes those as an individual podcast feed. Implemented in Python using AWS cloud-native services. No servers required.
 
 ![SauerPod](resources/media/sauerpod.drawio.png)
 
@@ -37,7 +37,7 @@ Required once to set up the project:
 Required for development work:
 * Create/activate venv (`. .venv/bin/activate`)
 * Configure AWS profile (`export AWS_PROFILE=xyz`)
-* Deploy stack (`cdk deploy` or `cdk watch`)
+* Deploy stack (`cdk deploy --all` or `cdk watch`)
 * Point bot`s webhook to Lambda
     * **Source**(!) secrets (don't execute the script)
         `. ./scripts/get-secrets-from-ssm.sh`
@@ -50,4 +50,4 @@ Required for development work:
 
 ## Disclaimer and Credits
 * 'Grumpy bot' icons by [www.flaticon.com](https://www.flaticon.com/).
-* Sauerpod is meant as a POC to demonstrate the power and elegance of cloud-native Python development. It uses uses [pytube](https://github.com/pytube/pytube) to download audio streams of videos and temporarily store them in a private S3 bucket. It must not be used to share any copyright-protected media.
+* Sauerpod is meant as a POC to demonstrate the power and elegance of cloud-native Python development. It uses [pytube](https://github.com/pytube/pytube) to download audio streams of videos and temporarily store them in a private S3 bucket. It must not be used to share any copyright-protected media.
